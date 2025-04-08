@@ -12,19 +12,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Plus } from "lucide-react"
 import Header from "@/components/header"
 import RateConfiguration from "@/components/rate-configuration"
+import Loading from "@/components/loading"
+import { useFirebase } from "@/contexts/firebase-context"
 
 export default function Settings() {
-  const [user, setUser] = useState<{ role: string } | null>(null)
+  const {userData, loading} = useFirebase()
+ 
 
-  useEffect(() => {
-    // In a real app, you would get this from your auth context
-    const storedUser = localStorage.getItem("user")
-    if (storedUser) {
-      setUser(JSON.parse(storedUser))
-    }
-  }, [])
-
-  if (!user) return null
+  if(loading) return <Loading />
+  
+  if (!userData) return null
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -36,7 +33,7 @@ export default function Settings() {
             <TabsTrigger value="profile" className="flex-shrink-0">
               Profile
             </TabsTrigger>
-            {user.role === "owner" && (
+            {userData.role === "owner" && (
               <>
                 <TabsTrigger value="payment" className="flex-shrink-0">
                   Payment Settings
@@ -73,7 +70,7 @@ export default function Settings() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="role">Role</Label>
-                    <Input id="role" defaultValue={user.role} disabled />
+                    <Input id="role" defaultValue={userData.role} disabled />
                   </div>
                 </div>
               </CardContent>
@@ -107,7 +104,7 @@ export default function Settings() {
             </Card>
           </TabsContent>
 
-          {user.role === "owner" && (
+          {userData.role === "owner" && (
             <TabsContent value="payment" className="space-y-6">
               {/* Replace the old table with our new Rate Configuration component */}
               <RateConfiguration />
@@ -171,7 +168,7 @@ export default function Settings() {
             </TabsContent>
           )}
 
-          {user.role === "owner" && (
+          {userData.role === "owner" && (
             <TabsContent value="users" className="space-y-6">
               <Card>
                 <CardHeader>
@@ -252,7 +249,7 @@ export default function Settings() {
             </TabsContent>
           )}
 
-          {user.role === "owner" && (
+          {userData.role === "owner" && (
             <TabsContent value="system" className="space-y-6">
               <Card>
                 <CardHeader>

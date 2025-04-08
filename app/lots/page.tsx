@@ -20,45 +20,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Plus, Edit, Trash2, Users } from "lucide-react"
 import Header from "@/components/header"
+import { useFirebase } from "@/contexts/firebase-context"
+import Loading from "../../components/loading"
+import { addLot, addLotToManager, getLots, getManagers, Lot, removeLotFromManager, UserData } from "@/lib/firestore-service"
 
-// Mock data
-const initialLots = [
-  {
-    id: 1,
-    name: "Lot A",
-    address: "123 Main St, Bangalore",
-    capacity: 50,
-    occupied: 38,
-    manager: "John Doe",
-  },
-  {
-    id: 2,
-    name: "Lot B",
-    address: "456 Park Ave, Mumbai",
-    capacity: 30,
-    occupied: 25,
-    manager: "Jane Smith",
-  },
-  {
-    id: 3,
-    name: "Lot C",
-    address: "789 Market St, Delhi",
-    capacity: 40,
-    occupied: 12,
-    manager: "Bob Johnson",
-  },
-]
 
-const managers = [
-  { id: 1, name: "John Doe", email: "john@example.com" },
-  { id: 2, name: "Jane Smith", email: "jane@example.com" },
-  { id: 3, name: "Bob Johnson", email: "bob@example.com" },
-  { id: 4, name: "Alice Brown", email: "alice@example.com" },
-]
 
 export default function LotManagement() {
-  const [user, setUser] = useState<{ role: string } | null>(null)
-  const [lots, setLots] = useState(initialLots)
+  const {userData, loading} = useFirebase()
+  const [lots, setLots] = useState<Lot[]>([]);
+  const [managers, setManagers] = useState<UserData[]>([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isManagerDialogOpen, setIsManagerDialogOpen] = useState(false)
@@ -71,11 +42,15 @@ export default function LotManagement() {
   })
 
   useEffect(() => {
-    // In a real app, you would get this from your auth context
-    const storedUser = localStorage.getItem("user")
-    if (storedUser) {
-      setUser(JSON.parse(storedUser))
+    const fetchData = async () => {
+      const managersData = getManagers();
+      const lotsData = getLots();
+      Promise.all([managersData, lotsData]).then(([managersData, lotsData]) => {
+        setManagers(managersData)
+        setLots(lotsData)
+      });
     }
+    fetchData()
   }, [])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -87,16 +62,18 @@ export default function LotManagement() {
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
-  const handleAddLot = () => {
+  const handleAddLot = async () => {
     const newLot = {
-      id: lots.length + 1,
+      id: "",
       name: formData.name,
       address: formData.address,
       capacity: Number.parseInt(formData.capacity),
       occupied: 0,
-      manager: formData.manager || "Unassigned",
     }
 
+    const lot = await addLot(newLot); 
+    await addLotToManager(lot.id, formData.manager); 
+    newLot.id = lot.id;
     setLots((prev) => [...prev, newLot])
     setIsAddDialogOpen(false)
     resetForm()
@@ -129,6 +106,12 @@ export default function LotManagement() {
     }
   }
 
+  const handleRemoveManager = (managerId: string) => {
+    if (confirm("Are you sure you want to remove the manager?")) {
+      removeLotFromManager(currentLot.id, managerId);
+    }
+  }
+
   const openEditDialog = (lot: any) => {
     setCurrentLot(lot)
     setFormData({
@@ -155,7 +138,10 @@ export default function LotManagement() {
     setCurrentLot(null)
   }
 
-  if (!user || user.role !== "owner") {
+  if(loading)
+    return <Loading/>
+
+  if (!loading && userData?.role !== "owner") {
     return (
       <div className="flex h-full items-center justify-center p-6">
         <Card className="w-full max-w-md">
@@ -212,8 +198,8 @@ export default function LotManagement() {
                   <SelectContent>
                     <SelectItem value="unassigned">Unassigned</SelectItem>
                     {managers.map((manager) => (
-                      <SelectItem key={manager.id} value={manager.name}>
-                        {manager.name}
+                      <SelectItem key={manager.uid} value={manager.uid!}>
+                        {manager.displayName}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -311,8 +297,8 @@ export default function LotManagement() {
                   <SelectContent>
                     <SelectItem value="unassigned">Unassigned</SelectItem>
                     {managers.map((manager) => (
-                      <SelectItem key={manager.id} value={manager.name}>
-                        {manager.name}
+                      <SelectItem key={manager.uid} value={manager.displayName!}>
+                        {manager.displayName!}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -341,25 +327,20 @@ export default function LotManagement() {
                   <TableRow>
                     <TableHead>Manager</TableHead>
                     <TableHead>Email</TableHead>
-                    <TableHead>Access</TableHead>
+                    <TableHead>Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {managers.map((manager) => (
-                    <TableRow key={manager.id}>
-                      <TableCell>{manager.name}</TableCell>
+                    <TableRow key={manager.uid}>
+                      <TableCell>{manager.displayName}</TableCell>
                       <TableCell>{manager.email}</TableCell>
                       <TableCell>
-                        <Select defaultValue={currentLot && currentLot.manager === manager.name ? "full" : "none"}>
-                          <SelectTrigger className="w-[120px]">
-                            <SelectValue placeholder="Access level" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">No Access</SelectItem>
-                            <SelectItem value="view">View Only</SelectItem>
-                            <SelectItem value="full">Full Access</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="text-destructive"
+                          onClick={() => handleRemoveManager(manager.uid)}/>
                       </TableCell>
                     </TableRow>
                   ))}

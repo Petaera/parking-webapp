@@ -15,7 +15,7 @@ interface NavItem {
   title: string
   href: string
   icon: React.ReactNode
-  submenu?: { title: string; href: string }[]
+  submenu?: { title: string; href: string, roles?:string[] }[]
   roles: string[]
 }
 

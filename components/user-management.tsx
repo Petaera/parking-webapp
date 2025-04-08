@@ -99,7 +99,7 @@ export default function UserManagement() {
 
     try {
       // Create user in Firebase Auth and Firestore
-      await signUp(newUserEmail, newUserPassword, newUserName, newUserRole)
+      await signUp(newUserEmail, newUserPassword, newUserName)
 
       // Fetch users again to update the list
       const usersRef = collection(db, "users")

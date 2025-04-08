@@ -11,18 +11,27 @@ import {
   orderBy,
   serverTimestamp,
   Timestamp,
+  arrayUnion,
+  arrayRemove,
 } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
 import { db, storage } from "./firebase"
 
+export interface UserData {
+  uid: string
+  email: string | null
+  displayName: string | null
+  role: string
+  assignedLots?: string[]
+  createdAt?: any
+}
+
 // Types
 export interface Lot {
-  id?: string
+  id: string
   name: string
   address: string
   capacity: number
-  managerIds: string[]
-  pricing: Record<string, any>
   updatedAt?: Timestamp
 }
 
@@ -45,6 +54,24 @@ export interface ParkingSlip {
   updatedAt?: Timestamp
 }
 
+// Users
+//TODO: Cache this
+export async function getManagers(): Promise<UserData[]> {
+  const managersRef = collection(db, "users")
+  const q = query(managersRef, where("role", "==", "manager"))
+  const snapshot = await getDocs(q)
+  return snapshot.docs.map((doc) => {
+    const data = doc.data();
+    return {
+      id: doc.id,
+      uid: data.uid,
+      email: data.email,
+      displayName: data.displayName,
+      role: data.role,
+    };
+  }) as UserData[];
+}
+
 // Lots
 export async function getLots() {
   const lotsRef = collection(db, "lots")
@@ -53,6 +80,32 @@ export async function getLots() {
     id: doc.id,
     ...doc.data(),
   })) as Lot[]
+}
+
+export function addLot(lotData: Omit<Lot, "id" | "updatedAt">) {
+  const lotsRef = collection(db, "lots")
+  const newLot = {
+    name: lotData.name,
+    address: lotData.address,
+    capacity: lotData.capacity,
+    updatedAt: serverTimestamp(),
+  }
+  return addDoc(lotsRef, newLot)
+}
+
+export function addLotToManager(lot: string, managerId: string) {
+  const docRef = doc(db, "users", managerId)
+  return updateDoc(docRef, {
+    assignedLots: arrayUnion(lot),
+  })
+
+}
+
+export function removeLotFromManager(lot: string, managerId: string) {
+  const docRef = doc(db, "users", managerId)
+  return updateDoc(docRef, {
+    assignedLots: arrayRemove(lot),
+  })
 }
 
 export async function getLotsByManager(managerId: string) {
