@@ -14,7 +14,8 @@ export default function Home() {
     }
 
   }, [loading])
-  if (loading)
+  
+  if (loading || (!loading && user))
     return <Loading />
 
 
