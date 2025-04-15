@@ -29,6 +29,7 @@ export interface UserData {
 // Types
 export interface Lot {
   id: string
+  active?: boolean
   name: string
   address: string
   capacity: number
@@ -68,14 +69,19 @@ export async function getManagers(): Promise<UserData[]> {
       email: data.email,
       displayName: data.displayName,
       role: data.role,
+      assignedLots: data.assignedLots || [],
     };
   }) as UserData[];
 }
 
 // Lots
 export async function getLots() {
+
   const lotsRef = collection(db, "lots")
-  const snapshot = await getDocs(lotsRef)
+  // also check the active flag
+  const q = query(lotsRef, where("active", "==", true))
+  const snapshot = await getDocs(q)
+  //TODO: add occupied
   return snapshot.docs.map((doc) => ({
     id: doc.id,
     ...doc.data(),
@@ -88,9 +94,32 @@ export function addLot(lotData: Omit<Lot, "id" | "updatedAt">) {
     name: lotData.name,
     address: lotData.address,
     capacity: lotData.capacity,
+    active: true,
     updatedAt: serverTimestamp(),
   }
   return addDoc(lotsRef, newLot)
+}
+
+export function editLot(id: string, lotData: Partial<Lot>) {
+  const docRef = doc(db, "lots", id)
+  return updateDoc(docRef, {
+    ...lotData,
+    updatedAt: serverTimestamp(),
+  })
+}
+
+export function deleteLotDocument(id: string) {
+  const docRef = doc(db, "lots", id)
+  return deleteDoc(docRef)
+}
+
+export async function deleteLot(id: string) {
+  //soft delete lot
+  const docRef = doc(db, "lots", id)
+  return updateDoc(docRef, {
+    active: false,
+    updatedAt: serverTimestamp(),
+  });
 }
 
 export function addLotToManager(lot: string, managerId: string) {
@@ -151,10 +180,6 @@ export async function updateLot(id: string, data: Partial<Lot>) {
   })
 }
 
-export async function deleteLot(id: string) {
-  const docRef = doc(db, "lots", id)
-  await deleteDoc(docRef)
-}
 
 // Parking Slips
 export async function getActiveVehicles(lotId?: string) {
