@@ -1,3 +1,4 @@
+"use client"
 import Loading from "@/components/loading"
 import LoginForm from "@/components/login-form"
 import { useFirebase } from "@/contexts/firebase-context"
