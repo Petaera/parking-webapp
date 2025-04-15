@@ -3,14 +3,15 @@ import Loading from "@/components/loading"
 import LoginForm from "@/components/login-form"
 import { useFirebase } from "@/contexts/firebase-context"
 import { useEffect } from "react"
-import { useRouter } from 'next/router';
+import { useRouter } from 'next/navigation';
 
 export default function Home() {
   const { user, loading } = useFirebase()
   const router = useRouter();
   useEffect(() => {
-    if (!loading && user)
-      router.replace('/dashboard')
+   if (!loading && user) {
+      router.replace("/dashboard")
+    }
 
   }, [loading])
   if (loading)
