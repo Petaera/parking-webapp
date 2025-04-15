@@ -119,55 +119,6 @@ export default function LoginForm() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="password">Password</Label>
-              <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="link" className="h-auto p-0 text-xs">
-                    Forgot Password?
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Reset Password</DialogTitle>
-                    <DialogDescription>
-                      Enter your email address and we'll send you a link to reset your password.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <form onSubmit={handleResetPassword}>
-                    <div className="space-y-4 py-4">
-                      {resetSuccess ? (
-                        <div className="flex items-center gap-2 rounded-md bg-green-50 p-3 text-sm text-green-600">
-                          <CheckCircle className="h-4 w-4" />
-                          <p>Password reset email sent. Check your inbox.</p>
-                        </div>
-                      ) : resetError ? (
-                        <div className="flex items-center gap-2 rounded-md bg-destructive/15 p-3 text-sm text-destructive">
-                          <AlertCircle className="h-4 w-4" />
-                          <p>{resetError}</p>
-                        </div>
-                      ) : null}
-                      <div className="space-y-2">
-                        <Label htmlFor="reset-email">Email</Label>
-                        <Input
-                          id="reset-email"
-                          type="email"
-                          value={resetEmail}
-                          onChange={(e) => setResetEmail(e.target.value)}
-                          placeholder="your@email.com"
-                          required
-                        />
-                      </div>
-                    </div>
-                    <DialogFooter>
-                      <Button type="button" variant="outline" onClick={closeResetDialog}>
-                        Cancel
-                      </Button>
-                      <Button type="submit" disabled={isResetting}>
-                        {isResetting ? "Sending..." : "Send Reset Link"}
-                      </Button>
-                    </DialogFooter>
-                  </form>
-                </DialogContent>
-              </Dialog>
             </div>
             <Input
               id="password"
@@ -178,17 +129,6 @@ export default function LoginForm() {
             />
           </div>
         </CardContent>
-        <CardFooter className="flex flex-col space-y-4">
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? "Signing in..." : "Sign In"}
-          </Button>
-          <div className="text-center text-sm">
-            Don't have an account?{" "}
-            <Link href="/register" className="text-primary hover:underline">
-              Register
-            </Link>
-          </div>
-        </CardFooter>
       </form>
     </Card>
   )
