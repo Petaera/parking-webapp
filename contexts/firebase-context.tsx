@@ -28,7 +28,7 @@ const FirebaseContext = createContext<FirebaseContextType | undefined>(undefined
 
 export function FirebaseProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  console.log("user", user)
+  console.log("user", user?.getIdTokenResult())
   const [userData, setUserData] = useState<UserData | null>(null)
   const [loading, setLoading] = useState(true)
 

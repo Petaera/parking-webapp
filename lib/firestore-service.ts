@@ -13,9 +13,13 @@ import {
   Timestamp,
   arrayUnion,
   arrayRemove,
+  onSnapshot,
+  DocumentSnapshot,
 } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
 import { db, storage } from "./firebase"
+import { withTimeout } from "./utils"
+import { get } from "http"
 
 export interface UserData {
   uid: string
@@ -53,6 +57,11 @@ export interface ParkingSlip {
   notes?: string
   createdAt?: Timestamp
   updatedAt?: Timestamp
+}
+
+interface VehicleDetails {
+  plate: string
+  vehicleType: string
 }
 
 // Users
@@ -159,17 +168,37 @@ export async function getLot(id: string) {
   return null
 }
 
-export async function createLot(lot: Omit<Lot, "id" | "updatedAt">) {
-  const lotsRef = collection(db, "lots")
-  const newLot = {
-    ...lot,
-    updatedAt: serverTimestamp(),
-  }
-  const docRef = await addDoc(lotsRef, newLot)
-  return {
-    id: docRef.id,
-    ...newLot,
-  }
+export async function getEntryVehicleDetails(lotId: string): Promise<VehicleDetails> {
+  const deviceRef = collection(db, "lots", lotId, "device");
+  //watch for entry doc
+  const entryDocRef = doc(deviceRef, "entry");
+
+  // Set up a real-time listener
+  const ret = new Promise<VehicleDetails>((resolve, reject) => {
+    //update entry doc
+    updateDoc(entryDocRef, {
+      scannedAt: serverTimestamp(),
+    }).catch((e) => reject(e));
+
+    const unsubscribe = onSnapshot(entryDocRef, (docSnap: DocumentSnapshot) => {
+      if (docSnap.exists()) {
+        const data: Record<string, any> = docSnap.data() as Record<string, any>;
+        if (data.recordedLicense && !data.scannedAt  && !docSnap.metadata.fromCache) {
+          unsubscribe(); // Stop listening after resolving
+          resolve({
+            plate: data.recordedLicense,
+            vehicleType: data.recordedType
+          });
+        }
+      } else {
+        unsubscribe()
+        reject(new Error("NO_DOC"));
+      }
+    });
+  })
+
+  return withTimeout<VehicleDetails>(ret, 7000);
+
 }
 
 export async function updateLot(id: string, data: Partial<Lot>) {

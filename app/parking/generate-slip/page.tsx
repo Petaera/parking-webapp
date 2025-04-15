@@ -13,8 +13,13 @@ import { Camera, RefreshCw, Info } from "lucide-react"
 import Header from "@/components/header"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useFirebase } from "@/contexts/firebase-context"
-import { createParkingSlip } from "@/lib/firestore-service"
+import { createParkingSlip, getEntryVehicleDetails } from "@/lib/firestore-service"
 import { Timestamp } from "firebase/firestore"
+import { useRouter } from "next/navigation";
+import { useSearchParams } from 'next/navigation'
+import { Toaster, toast } from 'react-hot-toast';
+import Loading from "@/components/loading"
+
 
 // Pricing slabs
 const pricingSlabs = {
@@ -36,90 +41,93 @@ const pricingSlabs = {
 export default function GenerateSlip() {
   const { userData } = useFirebase()
   const [vehicleNumber, setVehicleNumber] = useState("")
-  const [vehicleType, setVehicleType] = useState("4-wheeler")
+  const [vehicleType, setVehicleType] = useState("4")
   const [hours, setHours] = useState(1) // 0-24 hours
   const [days, setDays] = useState(0) // 0+ days
   const [manualAmount, setManualAmount] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isFetchingPlate, setIsFetchingPlate] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   const [vehicleImage, setVehicleImage] = useState<File | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
+  const searchParams = useSearchParams()
+  const router = useRouter();
+  const lot = searchParams.get('lot')
+  const { loading, user} = useFirebase()
   // Calculate total duration in hours
   const totalHours = hours + days * 24
 
   // Calculate fee based on vehicle type and duration
   const calculateFee = () => {
-    const slabs = pricingSlabs[vehicleType as keyof typeof pricingSlabs]
+    // const slabs = pricingSlabs[vehicleType as keyof typeof pricingSlabs]
 
-    // For durations longer than 24 hours
-    if (totalHours > 24) {
-      const fullDays = Math.floor(totalHours / 24)
-      const remainingHours = totalHours % 24
+    // // For durations longer than 24 hours
+    // if (totalHours > 24) {
+    //   const fullDays = Math.floor(totalHours / 24)
+    //   const remainingHours = totalHours % 24
 
-      // Find the price for the remaining hours
-      let remainingPrice = 0
-      for (const slab of slabs) {
-        if (remainingHours <= slab.maxHours) {
-          remainingPrice = slab.price
-          break
-        }
-      }
+    //   // Find the price for the remaining hours
+    //   let remainingPrice = 0
+    //   for (const slab of slabs) {
+    //     if (remainingHours <= slab.maxHours) {
+    //       remainingPrice = slab.price
+    //       break
+    //     }
+    //   }
 
-      // Calculate the price for full days (using the 24-hour slab)
-      const dayPrice =
-        slabs.find((slab) => slab.maxHours === 24)?.price ||
-        slabs.find((slab) => slab.maxHours === Number.POSITIVE_INFINITY)?.price ||
-        0
+    //   // Calculate the price for full days (using the 24-hour slab)
+    //   const dayPrice =
+    //     slabs.find((slab) => slab.maxHours === 24)?.price ||
+    //     slabs.find((slab) => slab.maxHours === Number.POSITIVE_INFINITY)?.price ||
+    //     0
 
-      return fullDays * dayPrice + remainingPrice
-    }
+    //   return fullDays * dayPrice + remainingPrice
+    // }
 
-    // For durations less than or equal to 24 hours
-    for (const slab of slabs) {
-      if (totalHours <= slab.maxHours) {
-        return slab.price
-      }
-    }
+    // // For durations less than or equal to 24 hours
+    // for (const slab of slabs) {
+    //   if (totalHours <= slab.maxHours) {
+    //     return slab.price
+    //   }
+    // }
 
-    return 0
+    // return 0
   }
 
   // Get the current pricing slab label
   const getCurrentSlabLabel = () => {
-    const slabs = pricingSlabs[vehicleType as keyof typeof pricingSlabs]
+    // const slabs = pricingSlabs[vehicleType as keyof typeof pricingSlabs]
 
-    if (totalHours > 24) {
-      const fullDays = Math.floor(totalHours / 24)
-      const remainingHours = totalHours % 24
+    // if (totalHours > 24) {
+    //   const fullDays = Math.floor(totalHours / 24)
+    //   const remainingHours = totalHours % 24
 
-      let remainingSlabLabel = ""
-      for (const slab of slabs) {
-        if (remainingHours <= slab.maxHours) {
-          remainingSlabLabel = slab.label
-          break
-        }
-      }
+    //   let remainingSlabLabel = ""
+    //   for (const slab of slabs) {
+    //     if (remainingHours <= slab.maxHours) {
+    //       remainingSlabLabel = slab.label
+    //       break
+    //     }
+    //   }
 
-      const daySlabLabel = slabs.find((slab) => slab.maxHours === Number.POSITIVE_INFINITY)?.label || ""
+    //   const daySlabLabel = slabs.find((slab) => slab.maxHours === Number.POSITIVE_INFINITY)?.label || ""
 
-      return `${fullDays} x ${daySlabLabel}${remainingHours > 0 ? ` + ${remainingSlabLabel}` : ""}`
-    }
+    //   return `${fullDays} x ${daySlabLabel}${remainingHours > 0 ? ` + ${remainingSlabLabel}` : ""}`
+    // }
 
-    for (const slab of slabs) {
-      if (totalHours <= slab.maxHours) {
-        return slab.label
-      }
-    }
+    // for (const slab of slabs) {
+    //   if (totalHours <= slab.maxHours) {
+    //     return slab.label
+    //   }
+    // }
 
-    return ""
+    // return ""
   }
 
   const fee = calculateFee()
 
   // Update manual amount when fee changes
   React.useEffect(() => {
-    setManualAmount(fee.toString())
+    // setManualAmount(fee.toString())
   }, [fee])
 
   const handleGenerateSlip = async () => {
@@ -138,7 +146,7 @@ export default function GenerateSlip() {
           vehicleType,
           entryTime: Timestamp.now(),
           status: "active",
-          paymentSlab: getCurrentSlabLabel(),
+          // paymentSlab: getCurrentSlabLabel(),
           feePaid: Number(manualAmount || fee),
         },
         vehicleImage || undefined,
@@ -164,24 +172,56 @@ export default function GenerateSlip() {
     }
   }
 
-  const simulateVehicleScan = () => {
+  const simulateVehicleScan = async () => {
     // Simulate ML detection
-    const plates = ["KA01AB1234", "MH02CD5678", "DL03EF9012", "TN04GH3456"]
-    const randomPlate = plates[Math.floor(Math.random() * plates.length)]
-    setVehicleNumber(randomPlate)
 
-    // Randomly set vehicle type
-    setVehicleType(Math.random() > 0.5 ? "4-wheeler" : "2-wheeler")
-  }
-
-  const handleImageCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setVehicleImage(e.target.files[0])
+    if (!lot) return
+    try {
+      setIsFetchingPlate(true)
+      const { plate, vehicleType } = await getEntryVehicleDetails(lot);
+      setVehicleNumber(plate)
+      console.log("Detected plate:", plate)
+      console.log("Detected vehicle type:", vehicleType)
+      setVehicleType(vehicleType)
+    } catch (e: any) {
+      if (e.message === "NO_DOC") {
+        router.replace("/")
+      }else{
+        toast.error("Failed to fetch vehicle details. Please try again.");
+      }
+    } finally {
+      setIsFetchingPlate(false)
     }
   }
 
+  if (!lot)
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold">Invalid Lot</h1>
+          <p>Please select a valid lot to generate a parking slip.</p>
+        </div>
+      </div>
+    )
+
+  if (loading)
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loading />
+      </div>
+    )
+  if (!user)
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold">Unauthorized</h1>
+          <p>Please sign in to access this page.</p>
+        </div>
+      </div>
+    )
   return (
     <div className="flex min-h-screen flex-col">
+      <Toaster />
       <Header title="Generate Parking Slip" />
 
       <div className="flex-1 p-4 pt-6 md:p-6">
@@ -204,26 +244,15 @@ export default function GenerateSlip() {
                   </div>
                 )}
                 <div className="absolute bottom-0 left-0 right-0 bg-slate-800/70 p-2 text-center text-sm text-white">
-                  Camera Feed (Simulated)
+                  Camera Feed
                 </div>
               </div>
 
               <div className="flex gap-2">
-                <Button variant="outline" className="flex-1" onClick={simulateVehicleScan}>
+                <Button variant="outline" className="flex-1" onClick={simulateVehicleScan} disabled={isFetchingPlate}>
                   <RefreshCw className="mr-2 h-4 w-4" />
                   Scan Vehicle
                 </Button>
-                <Button variant="outline" className="flex-1" onClick={() => fileInputRef.current?.click()}>
-                  <Camera className="mr-2 h-4 w-4" />
-                  Upload Image
-                </Button>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  className="hidden"
-                  accept="image/*"
-                  onChange={handleImageCapture}
-                />
               </div>
             </CardContent>
           </Card>
@@ -250,11 +279,11 @@ export default function GenerateSlip() {
                 <Label>Vehicle Type</Label>
                 <RadioGroup value={vehicleType} onValueChange={setVehicleType} className="flex gap-4">
                   <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="2-wheeler" id="2-wheeler" />
+                    <RadioGroupItem value="2" id="2-wheeler" />
                     <Label htmlFor="2-wheeler">2-Wheeler</Label>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="4-wheeler" id="4-wheeler" />
+                    <RadioGroupItem value="4" id="4-wheeler" />
                     <Label htmlFor="4-wheeler">4-Wheeler</Label>
                   </div>
                 </RadioGroup>
@@ -295,12 +324,12 @@ export default function GenerateSlip() {
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>
-                          <p>Based on: {getCurrentSlabLabel()}</p>
+                          {/* <p>Based on: {getCurrentSlabLabel()}</p> */}
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </div>
-                  <span className="font-bold">₹{fee}</span>
+                  {/* <span className="font-bold">₹{fee}</span> */}
                 </div>
 
                 <div className="space-y-2">
