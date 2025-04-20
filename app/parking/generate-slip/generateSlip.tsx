@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { useState, useRef } from "react"
+import { useState } from "react"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,12 +23,12 @@ import Loading from "@/components/loading"
 
 // Pricing slabs
 const pricingSlabs = {
-  "2-wheeler": [
+  "2": [
     { maxHours: 1, price: 10, label: "Up to 1 hour - ₹10" },
     { maxHours: 24, price: 20, label: "Up to 24 hours - ₹20" },
     { maxHours: Number.POSITIVE_INFINITY, price: 20, label: "Each additional 24 hours - ₹20" },
   ],
-  "4-wheeler": [
+  "4": [
     { maxHours: 1, price: 30, label: "Up to 1 hour - ₹30" },
     { maxHours: 2, price: 40, label: "Up to 2 hours - ₹40" },
     { maxHours: 8, price: 50, label: "Up to 8 hours - ₹50" },
@@ -58,76 +58,76 @@ export default function GenerateSlip() {
 
   // Calculate fee based on vehicle type and duration
   const calculateFee = () => {
-    // const slabs = pricingSlabs[vehicleType as keyof typeof pricingSlabs]
+    const slabs = pricingSlabs[vehicleType as keyof typeof pricingSlabs]
 
-    // // For durations longer than 24 hours
-    // if (totalHours > 24) {
-    //   const fullDays = Math.floor(totalHours / 24)
-    //   const remainingHours = totalHours % 24
+    // For durations longer than 24 hours
+    if (totalHours > 24) {
+      const fullDays = Math.floor(totalHours / 24)
+      const remainingHours = totalHours % 24
 
-    //   // Find the price for the remaining hours
-    //   let remainingPrice = 0
-    //   for (const slab of slabs) {
-    //     if (remainingHours <= slab.maxHours) {
-    //       remainingPrice = slab.price
-    //       break
-    //     }
-    //   }
+      // Find the price for the remaining hours
+      let remainingPrice = 0
+      for (const slab of slabs) {
+        if (remainingHours <= slab.maxHours) {
+          remainingPrice = slab.price
+          break
+        }
+      }
 
-    //   // Calculate the price for full days (using the 24-hour slab)
-    //   const dayPrice =
-    //     slabs.find((slab) => slab.maxHours === 24)?.price ||
-    //     slabs.find((slab) => slab.maxHours === Number.POSITIVE_INFINITY)?.price ||
-    //     0
+      // Calculate the price for full days (using the 24-hour slab)
+      const dayPrice =
+        slabs.find((slab) => slab.maxHours === 24)?.price ||
+        slabs.find((slab) => slab.maxHours === Number.POSITIVE_INFINITY)?.price ||
+        0
 
-    //   return fullDays * dayPrice + remainingPrice
-    // }
+      return fullDays * dayPrice + remainingPrice
+    }
 
-    // // For durations less than or equal to 24 hours
-    // for (const slab of slabs) {
-    //   if (totalHours <= slab.maxHours) {
-    //     return slab.price
-    //   }
-    // }
+    // For durations less than or equal to 24 hours
+    for (const slab of slabs) {
+      if (totalHours <= slab.maxHours) {
+        return slab.price
+      }
+    }
 
-    // return 0
+    return 0
   }
 
   // Get the current pricing slab label
   const getCurrentSlabLabel = () => {
-    // const slabs = pricingSlabs[vehicleType as keyof typeof pricingSlabs]
+    const slabs = pricingSlabs[vehicleType as keyof typeof pricingSlabs]
 
-    // if (totalHours > 24) {
-    //   const fullDays = Math.floor(totalHours / 24)
-    //   const remainingHours = totalHours % 24
+    if (totalHours > 24) {
+      const fullDays = Math.floor(totalHours / 24)
+      const remainingHours = totalHours % 24
 
-    //   let remainingSlabLabel = ""
-    //   for (const slab of slabs) {
-    //     if (remainingHours <= slab.maxHours) {
-    //       remainingSlabLabel = slab.label
-    //       break
-    //     }
-    //   }
+      let remainingSlabLabel = ""
+      for (const slab of slabs) {
+        if (remainingHours <= slab.maxHours) {
+          remainingSlabLabel = slab.label
+          break
+        }
+      }
 
-    //   const daySlabLabel = slabs.find((slab) => slab.maxHours === Number.POSITIVE_INFINITY)?.label || ""
+      const daySlabLabel = slabs.find((slab) => slab.maxHours === Number.POSITIVE_INFINITY)?.label || ""
 
-    //   return `${fullDays} x ${daySlabLabel}${remainingHours > 0 ? ` + ${remainingSlabLabel}` : ""}`
-    // }
+      return `${fullDays} x ${daySlabLabel}${remainingHours > 0 ? ` + ${remainingSlabLabel}` : ""}`
+    }
 
-    // for (const slab of slabs) {
-    //   if (totalHours <= slab.maxHours) {
-    //     return slab.label
-    //   }
-    // }
+    for (const slab of slabs) {
+      if (totalHours <= slab.maxHours) {
+        return slab.label
+      }
+    }
 
-    // return ""
+    return ""
   }
 
   const fee = calculateFee()
 
   // Update manual amount when fee changes
   React.useEffect(() => {
-    // setManualAmount(fee.toString())
+    setManualAmount(fee.toString())
   }, [fee])
 
   const handleGenerateSlip = async () => {
@@ -196,8 +196,9 @@ export default function GenerateSlip() {
 
   if (!lot)
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
+      <div className="flex min-h-screen flex-col">
+      <Header title="Generate Parking Slip" />
+        <div className="text-center flex flex-col flex-[1_1_0%] items-center justify-center">
           <h1 className="text-2xl font-bold">Invalid Lot</h1>
           <p>Please select a valid lot to generate a parking slip.</p>
         </div>
@@ -212,7 +213,7 @@ export default function GenerateSlip() {
     )
   if (!user)
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex min-h-screen flex-col">
         <div className="text-center">
           <h1 className="text-2xl font-bold">Unauthorized</h1>
           <p>Please sign in to access this page.</p>
@@ -324,12 +325,12 @@ export default function GenerateSlip() {
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>
-                          {/* <p>Based on: {getCurrentSlabLabel()}</p> */}
+                          <p>Based on: {getCurrentSlabLabel()}</p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </div>
-                  {/* <span className="font-bold">₹{fee}</span> */}
+                  <span className="font-bold">₹{fee}</span>
                 </div>
 
                 <div className="space-y-2">
