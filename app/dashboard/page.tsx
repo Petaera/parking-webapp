@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { onSnapshot, collectionGroup } from "firebase/firestore";
+import { getDocs, collectionGroup, collection } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Header from "@/components/header";
@@ -19,26 +19,59 @@ import { EntryDetails, VehicleStatus } from "@/lib/firestore-service";
 import { useFirebase } from "@/contexts/firebase-context";
 import Loading from "@/components/loading";
 
+
 type Activity = EntryDetails & { id: string; lot: string };
 
 export default function Dashboard() {
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [totalRevenue, setTotalRevenue] = useState(0);
+  const [activeCount, setActiveCount] = useState(0);
+  const [overdueCount, setOverdueCount] = useState(0);
+  const [utilization, setUtilization] = useState(0);
   const { loading, user, userData } = useFirebase()
 
   useEffect(() => {
-    // restore user role
 
-    // subscribe to all "active" subcollections across lots
-    const q = collectionGroup(db, "active");
-    const unsub = onSnapshot(q, (snap) => {
-      const data = snap.docs.map((doc) => {
-        const entry = doc.data() as EntryDetails;
+    async function fetchData() {
+      // fetch all active entries subcollections
+      const col = collection(db, "lots");
+      const entriesSnap = await getDocs(collectionGroup(db, "active"));
+      const now = new Date();
+      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const entries: Activity[] = entriesSnap.docs.map((doc) => {
+        const data = doc.data() as EntryDetails;
         const lotId = doc.ref.parent?.parent?.id || "";
-        return { id: doc.id, lot: lotId, ...entry };
+        return { id: doc.id, lot: lotId, ...data };
       });
-      setActivities(data);
-    });
-    return () => unsub();
+      setActivities(entries);
+
+      // compute metrics
+      const revenue = entries
+        .filter(e => e.exitedTime && e.exitedTime.toDate() >= startOfDay)
+        .reduce((sum, e) => sum + (e.feePaid ?? e.fee), 0);
+      setTotalRevenue(revenue);
+
+      const active = entries.filter(e => e.status === "active").length;
+      setActiveCount(active);
+
+      const overdue = entries.filter(
+        e =>
+          e.status === "active" &&
+          now.getTime() > e.exitTime.toDate().getTime()
+      ).length;
+      setOverdueCount(overdue);
+
+      // fetch lots to compute utilization (assumes each lot doc has a `capacity` field)
+      const lotsSnap = await getDocs(collection(db, "lots"));
+      let totalCapacity = 0;
+      lotsSnap.docs.forEach(doc => {
+        const lotData = doc.data() as { capacity?: number };
+        totalCapacity += lotData.capacity ?? 0;
+      });
+      setUtilization(totalCapacity > 0 ? Math.round((active / totalCapacity) * 100) : 0);
+    }
+
+    fetchData();
   }, []);
 
   if (loading || !userData) return <Loading/>;
@@ -56,7 +89,7 @@ export default function Dashboard() {
       <div className="flex-1 p-4 pt-6 md:p-6">
         <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
           <Card>
-            <CardContent className="flex flex-row items-center p-6">
+            <CardContent className="flex items-center p-6">
               <div className="mr-4 rounded-full bg-primary/10 p-2">
                 <DollarSign className="h-6 w-6 text-primary" />
               </div>
@@ -64,34 +97,32 @@ export default function Dashboard() {
                 <p className="text-sm font-medium text-muted-foreground">
                   {userData.role === "owner" ? "Total Revenue Today" : "Pending Dues"}
                 </p>
-                <h3 className="text-2xl font-bold">₹4,550</h3>
+                <h3 className="text-2xl font-bold">₹{totalRevenue}</h3>
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardContent className="flex flex-row items-center p-6">
+            <CardContent className="flex items-center p-6">
               <div className="mr-4 rounded-full bg-primary/10 p-2">
                 <Car className="h-6 w-6 text-primary" />
               </div>
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Active Vehicles</p>
-                <h3 className="text-2xl font-bold">{activities.filter(a => a.status === "active").length}</h3>
+                <h3 className="text-2xl font-bold">{activeCount}</h3>
               </div>
             </CardContent>
           </Card>
 
           {userData.role === "owner" && (
             <Card>
-              <CardContent className="flex flex-row items-center p-6">
+              <CardContent className="flex items-center p-6">
                 <div className="mr-4 rounded-full bg-primary/10 p-2">
                   <Clock className="h-6 w-6 text-primary" />
                 </div>
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Overdue Payments</p>
-                  <h3 className="text-2xl font-bold">
-                    {activities.filter(a => a.status === "active" && Date.now() - a.exitTime.toDate().getTime() > 0).length}
-                  </h3>
+                  <h3 className="text-2xl font-bold">{overdueCount}</h3>
                 </div>
               </CardContent>
             </Card>
@@ -99,13 +130,13 @@ export default function Dashboard() {
 
           {userData.role === "owner" && (
             <Card>
-              <CardContent className="flex flex-row items-center p-6">
+              <CardContent className="flex items-center p-6">
                 <div className="mr-4 rounded-full bg-primary/10 p-2">
                   <PercentIcon className="h-6 w-6 text-primary" />
                 </div>
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Lot Utilization</p>
-                  <h3 className="text-2xl font-bold">78%</h3>
+                  <h3 className="text-2xl font-bold">{utilization}%</h3>
                 </div>
               </CardContent>
             </Card>
@@ -113,7 +144,7 @@ export default function Dashboard() {
         </div>
 
         <div className="mt-6 grid gap-6 grid-cols-1 lg:grid-cols-2">
-          <Card className="col-span-1">
+          <Card>
             <CardHeader>
               <CardTitle>Recent Activity</CardTitle>
             </CardHeader>
@@ -158,30 +189,7 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          {userData.role === "owner" && (
-            <Card className="col-span-1">
-              <CardHeader>
-                <CardTitle>Weekly Revenue</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {/* ... your existing chart code ... */}
-              </CardContent>
-            </Card>
-          )}
-
-          {userData.role === "owner" && (
-            <Card className="col-span-1 lg:col-span-2">
-              <CardHeader className="flex flex-row items-center">
-                <CardTitle className="flex items-center">
-                  <AlertTriangle className="mr-2 h-5 w-5 text-amber-500" />
-                  Alerts & Notifications
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {/* ... your existing alerts ... */}
-              </CardContent>
-            </Card>
-          )}
+          {/* ... other owner-only cards ... */}
         </div>
       </div>
     </div>
