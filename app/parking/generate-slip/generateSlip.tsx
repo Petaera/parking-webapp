@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import React, { use, useEffect } from "react"
 
 import { useState } from "react"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,7 +13,7 @@ import { Camera, RefreshCw, Info } from "lucide-react"
 import Header from "@/components/header"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useFirebase } from "@/contexts/firebase-context"
-import { createParkingSlip, getEntryVehicleDetails } from "@/lib/firestore-service"
+import { getEntryVehicleDetails, getLots, getSlabByLotId, Lot, saveEntryVehicleDetails, saveVehicleDetails, VehicleStatus, VehicleType } from "@/lib/firestore-service"
 import { Timestamp } from "firebase/firestore"
 import { useRouter } from "next/navigation";
 import { useSearchParams } from 'next/navigation'
@@ -21,25 +21,9 @@ import { Toaster, toast } from 'react-hot-toast';
 import Loading from "@/components/loading"
 
 
-// Pricing slabs
-const pricingSlabs = {
-  "2": [
-    { maxHours: 1, price: 10, label: "Up to 1 hour - ₹10" },
-    { maxHours: 24, price: 20, label: "Up to 24 hours - ₹20" },
-    { maxHours: Number.POSITIVE_INFINITY, price: 20, label: "Each additional 24 hours - ₹20" },
-  ],
-  "4": [
-    { maxHours: 1, price: 30, label: "Up to 1 hour - ₹30" },
-    { maxHours: 2, price: 40, label: "Up to 2 hours - ₹40" },
-    { maxHours: 8, price: 50, label: "Up to 8 hours - ₹50" },
-    { maxHours: 16, price: 80, label: "Up to 16 hours - ₹80" },
-    { maxHours: 24, price: 100, label: "Up to 24 hours - ₹100" },
-    { maxHours: Number.POSITIVE_INFINITY, price: 100, label: "Each additional 24 hours - ₹100" },
-  ],
-}
-
 export default function GenerateSlip() {
-  const { userData } = useFirebase()
+  const [pricingSlabs, setPricingSlabs] = useState<VehicleType[]>([]);
+  const [lots, setLots] = useState<Lot[]>([]);
   const [vehicleNumber, setVehicleNumber] = useState("")
   const [vehicleType, setVehicleType] = useState("4")
   const [hours, setHours] = useState(1) // 0-24 hours
@@ -47,46 +31,64 @@ export default function GenerateSlip() {
   const [manualAmount, setManualAmount] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isFetchingPlate, setIsFetchingPlate] = useState(false)
-  const [isSuccess, setIsSuccess] = useState(false)
   const [vehicleImage, setVehicleImage] = useState<File | null>(null)
   const searchParams = useSearchParams()
   const router = useRouter();
   const lot = searchParams.get('lot')
-  const { loading, user} = useFirebase()
+  const { loading, user, userData } = useFirebase()
   // Calculate total duration in hours
   const totalHours = hours + days * 24
 
+  useEffect(() => {
+    getLots().then((l) => {
+      setLots(l)
+    });
+
+  }, [])
+
+  useEffect(() => {
+    if (lot === null) return
+    getSlabByLotId(lot).then((slabs) => {
+      setPricingSlabs(slabs)
+    })
+  }, [lot])
+
+  const selectSLot = (lotId: string) => {
+    if (!lotId) return
+    router.replace(`?lot=${lotId}`)
+  }
   // Calculate fee based on vehicle type and duration
   const calculateFee = () => {
-    const slabs = pricingSlabs[vehicleType as keyof typeof pricingSlabs]
+    const vehicleSlabs = pricingSlabs.find((slab) => slab.id === vehicleType)?.slabs
+    if (!vehicleSlabs) return 0
 
     // For durations longer than 24 hours
     if (totalHours > 24) {
       const fullDays = Math.floor(totalHours / 24)
       const remainingHours = totalHours % 24
 
-      // Find the price for the remaining hours
-      let remainingPrice = 0
-      for (const slab of slabs) {
-        if (remainingHours <= slab.maxHours) {
-          remainingPrice = slab.price
-          break
+      // Find the 24-hour additional slab
+      const additionalDaySlab = vehicleSlabs.find(slab => slab.rangeType === "eachAdditional")
+      const dayFee = additionalDaySlab ? additionalDaySlab.fee : 0
+
+      // Calculate remaining hours fee
+      let remainingFee = 0
+      if (remainingHours > 0) {
+        for (const slab of vehicleSlabs) {
+          if (slab.rangeType === "upTo" && remainingHours <= slab.hours) {
+            remainingFee = slab.fee
+            break
+          }
         }
       }
 
-      // Calculate the price for full days (using the 24-hour slab)
-      const dayPrice =
-        slabs.find((slab) => slab.maxHours === 24)?.price ||
-        slabs.find((slab) => slab.maxHours === Number.POSITIVE_INFINITY)?.price ||
-        0
-
-      return fullDays * dayPrice + remainingPrice
+      return (fullDays * dayFee) + remainingFee
     }
 
     // For durations less than or equal to 24 hours
-    for (const slab of slabs) {
-      if (totalHours <= slab.maxHours) {
-        return slab.price
+    for (const slab of vehicleSlabs) {
+      if (slab.rangeType === "upTo" && totalHours <= slab.hours) {
+        return slab.fee
       }
     }
 
@@ -95,28 +97,32 @@ export default function GenerateSlip() {
 
   // Get the current pricing slab label
   const getCurrentSlabLabel = () => {
-    const slabs = pricingSlabs[vehicleType as keyof typeof pricingSlabs]
+    const vehicleSlabs = pricingSlabs.find((slab) => slab.id === vehicleType)?.slabs
+    if (!vehicleSlabs) return ""
 
     if (totalHours > 24) {
       const fullDays = Math.floor(totalHours / 24)
       const remainingHours = totalHours % 24
 
+      const additionalDaySlab = vehicleSlabs.find(slab => slab.rangeType === "eachAdditional")
       let remainingSlabLabel = ""
-      for (const slab of slabs) {
-        if (remainingHours <= slab.maxHours) {
-          remainingSlabLabel = slab.label
-          break
+
+      if (remainingHours > 0) {
+        for (const slab of vehicleSlabs) {
+          if (slab.rangeType === "upTo" && remainingHours <= slab.hours) {
+            remainingSlabLabel = `${slab.hours}hr @ ₹${slab.fee}`
+            break
+          }
         }
       }
-
-      const daySlabLabel = slabs.find((slab) => slab.maxHours === Number.POSITIVE_INFINITY)?.label || ""
-
+      
+      const daySlabLabel = additionalDaySlab ? `24${additionalDaySlab.hours === 24?'day':'hr'} @ ₹${additionalDaySlab.fee}` : ""
       return `${fullDays} x ${daySlabLabel}${remainingHours > 0 ? ` + ${remainingSlabLabel}` : ""}`
     }
 
-    for (const slab of slabs) {
-      if (totalHours <= slab.maxHours) {
-        return slab.label
+    for (const slab of vehicleSlabs) {
+      if (slab.rangeType === "upTo" && totalHours <= slab.hours) {
+        return `${slab.hours}hr @ ₹${slab.fee}`
       }
     }
 
@@ -131,45 +137,44 @@ export default function GenerateSlip() {
   }, [fee])
 
   const handleGenerateSlip = async () => {
-    if (!userData) return
+    if (!userData || !lot) return
 
     setIsGenerating(true)
+    const vehicleDetails = {
+      createdBy: userData.uid,
+      createdByName: userData.displayName?? "",
+      enteredPlate: vehicleNumber,
+      enteredType: vehicleType,
+      entryTime: Timestamp.now(),
+      exitTime: Timestamp.fromDate(new Date(Date.now() + totalHours * 60 * 60 * 1000)),
+      duration: totalHours,
+      paymentSlab: getCurrentSlabLabel(),
+      fee: Number(manualAmount),
+      status: "active" as VehicleStatus,
+    }
 
     try {
       // Create parking slip in Firestore
-      await createParkingSlip(
-        {
-          lotId: "default", // In a real app, you'd select the lot
-          createdBy: userData.uid,
-          systemRecordedPlate: vehicleNumber,
-          enteredPlate: vehicleNumber,
-          vehicleType,
-          entryTime: Timestamp.now(),
-          status: "active",
-          // paymentSlab: getCurrentSlabLabel(),
-          feePaid: Number(manualAmount || fee),
-        },
-        vehicleImage || undefined,
-      )
-
-      setIsSuccess(true)
-
-      // Reset form after 3 seconds
-      setTimeout(() => {
-        setVehicleNumber("")
-        setVehicleType("4-wheeler")
-        setHours(1)
-        setDays(0)
-        setManualAmount(null)
-        setVehicleImage(null)
-        setIsSuccess(false)
-      }, 3000)
+      await saveEntryVehicleDetails(lot, vehicleDetails)
+      toast.success("Parking slip generated successfully!")
+      resetForm()
     } catch (error) {
       console.error("Error generating slip:", error)
-      alert("Failed to generate slip. Please try again.")
+      toast.error("Failed to generate parking slip. Saving details")
+      await saveVehicleDetails(lot, vehicleDetails)
+      resetForm();
     } finally {
       setIsGenerating(false)
     }
+  }
+
+  const resetForm = () => {
+    setVehicleNumber("")
+    setVehicleType("4")
+    setHours(1)
+    setDays(0)
+    setManualAmount(null)
+    setVehicleImage(null)
   }
 
   const simulateVehicleScan = async () => {
@@ -177,6 +182,7 @@ export default function GenerateSlip() {
 
     if (!lot) return
     try {
+      console.log("Simulating vehicle scan...")
       setIsFetchingPlate(true)
       const { plate, vehicleType } = await getEntryVehicleDetails(lot);
       setVehicleNumber(plate)
@@ -184,11 +190,7 @@ export default function GenerateSlip() {
       console.log("Detected vehicle type:", vehicleType)
       setVehicleType(vehicleType)
     } catch (e: any) {
-      if (e.message === "NO_DOC") {
-        router.replace("/")
-      }else{
         toast.error("Failed to fetch vehicle details. Please try again.");
-      }
     } finally {
       setIsFetchingPlate(false)
     }
@@ -197,10 +199,27 @@ export default function GenerateSlip() {
   if (!lot)
     return (
       <div className="flex min-h-screen flex-col">
-      <Header title="Generate Parking Slip" />
+        <Header title="Generate Parking Slip" />
         <div className="text-center flex flex-col flex-[1_1_0%] items-center justify-center">
-          <h1 className="text-2xl font-bold">Invalid Lot</h1>
-          <p>Please select a valid lot to generate a parking slip.</p>
+          <div className="space-y-4">
+            <select
+              id="lot-select"
+              onChange={(e) => selectSLot(e.target.value)}
+              className="border rounded px-2 py-1 mt-2"
+              disabled={lots.length === 0}
+            >
+              <option value="">Select a lot</option>
+              {lots.length === 0 ? (
+                <option>Loading...</option>
+              ) : (
+                lots.map((lot) => (
+                  <option key={lot.id} value={lot.id}>
+                    {lot.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
         </div>
       </div>
     )
@@ -349,9 +368,9 @@ export default function GenerateSlip() {
               <Button
                 className="w-full"
                 onClick={handleGenerateSlip}
-                disabled={!vehicleNumber || isGenerating || isSuccess}
+                disabled={!vehicleNumber || isGenerating}
               >
-                {isGenerating ? "Generating..." : isSuccess ? "Slip Generated!" : "Generate Slip"}
+                {isGenerating ? "Generating..." : "Generate Slip"}
               </Button>
             </CardFooter>
           </Card>

@@ -44,7 +44,7 @@ export default function LotManagement() {
   useEffect(() => {
     const fetchData = async () => {
       const managersData = getManagers();
-      const lotsData = getLots();
+      const lotsData = getLots(true);
       Promise.all([managersData, lotsData]).then(([managersData, lotsData]) => {
         setManagers(managersData)
         setLots(lotsData)
@@ -52,14 +52,14 @@ export default function LotManagement() {
     }
     fetchData()
   }, [])
-
+  
   const updateManagerList = async () => {
     const managersData = await getManagers();
     setManagers(managersData)
   }
 
   const updateLotList = async () => {
-    const lotsData = await getLots();
+    const lotsData = await getLots(true);
     setLots(lotsData)
   }
 

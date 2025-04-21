@@ -15,11 +15,11 @@ import {
   arrayRemove,
   onSnapshot,
   DocumentSnapshot,
+  writeBatch,
 } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
 import { db, storage } from "./firebase"
 import { withTimeout } from "./utils"
-import { get } from "http"
 
 export interface UserData {
   uid: string
@@ -39,29 +39,45 @@ export interface Lot {
   capacity: number
   updatedAt?: Timestamp
 }
+export type VehicleStatus = "active" | "exited" | "fraud"
 
-export interface ParkingSlip {
-  id?: string
-  lotId: string
+export interface EntryDetails {
   createdBy: string
-  systemRecordedPlate: string
+  createdByName: string
   enteredPlate: string
-  vehicleType: string
+  enteredType: string
   entryTime: Timestamp
-  exitTime?: Timestamp
-  duration?: number
-  paymentSlab?: string
+  exitTime: Timestamp
+  exitedTime?: Timestamp
+  duration: number
+  paymentSlab: string
+  fee: number
+  exitedByName?: string
   feePaid?: number
-  status: "active" | "exited" | "fraud"
-  photoUrl?: string
-  notes?: string
-  createdAt?: Timestamp
-  updatedAt?: Timestamp
+  paymentMethod?: string
+  status: VehicleStatus
 }
 
 interface VehicleDetails {
   plate: string
   vehicleType: string
+}
+
+export type TimeRangeType = "upTo" | "eachAdditional" | "between"
+
+export interface Slab {
+  id: string
+  title?: string
+  rangeType: TimeRangeType
+  hours: number
+  hoursEnd?: number // For "between" range type
+  fee: number
+}
+
+export interface VehicleType {
+  id: string
+  name: string
+  slabs: Slab[]
 }
 
 // Users
@@ -84,17 +100,51 @@ export async function getManagers(): Promise<UserData[]> {
 }
 
 // Lots
-export async function getLots() {
+const CACHE_KEY = 'parking_lots_cache';
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
 
-  const lotsRef = collection(db, "lots")
-  // also check the active flag
-  const q = query(lotsRef, where("active", "==", true))
-  const snapshot = await getDocs(q)
-  //TODO: add occupied
-  return snapshot.docs.map((doc) => ({
+export async function getLots(forceFetch: boolean = false):Promise<Lot[]> {
+  const now = Date.now();
+  
+  // Check localStorage cache if forceFetch is false
+  if (!forceFetch) {
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      const { data, timestamp } = JSON.parse(cached);
+      if ((now - timestamp) < CACHE_DURATION) {
+        return data;
+      }
+    }
+  }
+
+  const lotsRef = collection(db, "lots");
+  const q = query(lotsRef, where("active", "==", true));
+  const snapshot = await getDocs(q);
+  
+  const lots = snapshot.docs.map((doc) => ({
     id: doc.id,
     ...doc.data(),
-  })) as Lot[]
+  })) as Lot[];
+
+  // Update localStorage cache
+  localStorage.setItem(CACHE_KEY, JSON.stringify({
+    data: lots,
+    timestamp: now
+  }));
+
+  return lots;
+}
+
+export async function getPaymentSlabs(lotId: string) {
+  const docRef = doc(db, "lots", lotId, "pricing")
+  const docSnap = await getDoc(docRef)
+  if (docSnap.exists()) {
+    return {
+      id: docSnap.id,
+      ...docSnap.data(),
+    } as Lot
+  }
+  return null
 }
 
 export function addLot(lotData: Omit<Lot, "id" | "updatedAt">) {
@@ -174,6 +224,7 @@ export async function getEntryVehicleDetails(lotId: string): Promise<VehicleDeta
   const entryDocRef = doc(deviceRef, "entry");
 
   // Set up a real-time listener
+  let uns;
   const ret = new Promise<VehicleDetails>((resolve, reject) => {
     //update entry doc
     updateDoc(entryDocRef, {
@@ -183,23 +234,140 @@ export async function getEntryVehicleDetails(lotId: string): Promise<VehicleDeta
     const unsubscribe = onSnapshot(entryDocRef, (docSnap: DocumentSnapshot) => {
       if (docSnap.exists()) {
         const data: Record<string, any> = docSnap.data() as Record<string, any>;
-        if (data.recordedLicense && !data.scannedAt  && !docSnap.metadata.fromCache) {
+        if (data.recordedLicense && !data.scannedAt  && !docSnap.metadata.fromCache && !docSnap.metadata.hasPendingWrites) {
           unsubscribe(); // Stop listening after resolving
+          console.log("Vehicle details: ", data, docSnap.metadata);
           resolve({
             plate: data.recordedLicense,
             vehicleType: data.recordedType
           });
         }
-      } else {
-        unsubscribe()
-        reject(new Error("NO_DOC"));
       }
     });
+    uns = unsubscribe;
   })
 
-  return withTimeout<VehicleDetails>(ret, 7000);
+  return withTimeout<VehicleDetails>(ret, 7000, uns);
 
 }
+
+export async function saveEntryVehicleDetails(lotId: string, data: EntryDetails): Promise<string> {
+  const deviceRef = collection(db, "lots", lotId, "device");
+  //watch for entry doc
+  const entryDocRef = doc(deviceRef, "entry");
+
+  let uns;
+  // Set up a real-time listener
+  const ret = new Promise<string>((resolve, reject) => {
+    //update entry doc
+    updateDoc(entryDocRef, {
+      ...data,
+      save: true
+    }).catch((e) => reject(e));
+
+    const activeCollection = collection(db, "lots", lotId, "active");
+    const activeVehicle = query(activeCollection, where("entryTime", "==", data.entryTime));
+    const unsubscribe = onSnapshot(activeVehicle, (querySnapshot) => {
+      if (!querySnapshot.empty) {
+        const docSnap = querySnapshot.docs[0];
+        const data = docSnap.data();
+        console.log("Vehicle details: ", data, docSnap.metadata);
+        if (data.save && !docSnap.metadata.fromCache && !docSnap.metadata.hasPendingWrites) {
+          unsubscribe(); // Stop listening after resolving
+          resolve(docSnap.id);
+        }
+      }
+    });
+    uns = unsubscribe;
+  })
+
+  return withTimeout<string>(ret, 4000, uns);
+}
+
+
+export async function getExitVehicleDetails(lotId: string): Promise<VehicleDetails> {
+  const deviceRef = collection(db, "lots", lotId, "device");
+  //watch for entry doc
+  const exitDocRef = doc(deviceRef, "exit");
+
+  // Set up a real-time listener
+  let uns;
+  const ret = new Promise<VehicleDetails>((resolve, reject) => {
+    //update entry doc
+    updateDoc(exitDocRef, {
+      scannedAt: serverTimestamp(),
+    }).catch((e) => reject(e));
+
+    const unsubscribe = onSnapshot(exitDocRef, (docSnap: DocumentSnapshot) => {
+      if (docSnap.exists()) {
+        const data: Record<string, any> = docSnap.data() as Record<string, any>;
+        if (data.recordedExitLicense && !data.scannedAt  && !docSnap.metadata.fromCache && !docSnap.metadata.hasPendingWrites) {
+          unsubscribe(); // Stop listening after resolving
+          console.log("Vehicle details: ", data, docSnap.metadata);
+          resolve({
+            plate: data.recordedExitLicense,
+            vehicleType: data.recordedExitType
+          });
+        }
+      }
+    });
+    uns = unsubscribe;
+  })
+
+  return withTimeout<VehicleDetails>(ret, 7000, uns);
+
+}
+
+
+
+export async function saveExitVehicleDetails(lotId: string, vehicle_id: string, data: Partial<EntryDetails>): Promise<string> {
+  const deviceRef = collection(db, "lots", lotId, "device");
+  //watch for entry doc
+  const entryDocRef = doc(deviceRef, "exit");
+
+  let uns;
+  // Set up a real-time listener
+  const ret = new Promise<string>((resolve, reject) => {
+    //update entry doc
+    updateDoc(entryDocRef, {
+      ...data,
+      vehicle: vehicle_id,
+      save: true
+    }).catch((e) => reject(e));
+
+    const d = doc(db, "lots", lotId, "active", vehicle_id);
+    const unsubscribe = onSnapshot(d, (docSnapshot) => {
+      if (docSnapshot.exists()) {
+      const data = docSnapshot.data();
+      console.log("Vehicle details: ", data, docSnapshot.metadata);
+      if (data.save && !docSnapshot.metadata.fromCache && !docSnapshot.metadata.hasPendingWrites) {
+        unsubscribe(); // Stop listening after resolving
+        resolve(docSnapshot.id);
+      }
+      }
+    });
+    uns = unsubscribe;
+  })
+
+  return withTimeout<string>(ret, 4000, uns);
+}
+
+
+
+export async function saveVehicleDetails(lotId: string, data: EntryDetails): Promise<string> {
+  const activeCollection = collection(db, "lots", lotId, "active");
+  const docRef = await addDoc(activeCollection, data);
+  return docRef.id;
+}
+
+export async function updateVehicleDetails(lotId: string, vehicleId: string, data: Partial<EntryDetails>) {
+  const docRef = doc(db, "lots", lotId, "active", vehicleId)
+  await updateDoc(docRef, {
+    ...data,
+    updatedAt: serverTimestamp(),
+  })
+}
+
 
 export async function updateLot(id: string, data: Partial<Lot>) {
   const docRef = doc(db, "lots", id)
@@ -209,105 +377,55 @@ export async function updateLot(id: string, data: Partial<Lot>) {
   })
 }
 
-
-// Parking Slips
-export async function getActiveVehicles(lotId?: string) {
-  const slipsRef = collection(db, "parking_slips")
-  let q = query(slipsRef, where("status", "==", "active"), orderBy("entryTime", "desc"))
-
-  if (lotId) {
-    q = query(slipsRef, where("status", "==", "active"), where("lotId", "==", lotId), orderBy("entryTime", "desc"))
-  }
-
+export async function getSlabByLotId(lotId: string) {
+  const col = collection(db, "lots", lotId, "pricing")
+  const q = query(col)
   const snapshot = await getDocs(q)
   return snapshot.docs.map((doc) => ({
     id: doc.id,
     ...doc.data(),
-  })) as ParkingSlip[]
+  })) as VehicleType[]
+  
 }
 
-export async function getParkingSlip(id: string) {
-  const docRef = doc(db, "parking_slips", id)
-  const docSnap = await getDoc(docRef)
-  if (docSnap.exists()) {
-    return {
-      id: docSnap.id,
-      ...docSnap.data(),
-    } as ParkingSlip
-  }
-  return null
-}
-
-export async function createParkingSlip(
-  slip: Omit<ParkingSlip, "id" | "createdAt" | "updatedAt">,
-  vehicleImage?: File,
-) {
-  // Upload image if provided
-  let photoUrl = undefined
-  if (vehicleImage) {
-    const storageRef = ref(storage, `vehicle_images/${Date.now()}_${vehicleImage.name}`)
-    await uploadBytes(storageRef, vehicleImage)
-    photoUrl = await getDownloadURL(storageRef)
-  }
-
-  const slipsRef = collection(db, "parking_slips")
-  const newSlip = {
-    ...slip,
-    photoUrl,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  }
-
-  const docRef = await addDoc(slipsRef, newSlip)
-  return {
-    id: docRef.id,
-    ...newSlip,
-  }
-}
-
-export async function updateParkingSlip(id: string, data: Partial<ParkingSlip>) {
-  const docRef = doc(db, "parking_slips", id)
-  await updateDoc(docRef, {
-    ...data,
-    updatedAt: serverTimestamp(),
-  })
-}
-
-// Rate Configuration
-export async function updatePricingForLot(lotId: string, pricingData: Record<string, any>) {
-  const docRef = doc(db, "lots", lotId)
-  await updateDoc(docRef, {
-    pricing: pricingData,
-    updatedAt: serverTimestamp(),
-  })
-}
-
-// Reports
-export async function getRevenueData(startDate: Date, endDate: Date, lotId?: string) {
-  const slipsRef = collection(db, "parking_slips")
-  let q = query(
-    slipsRef,
-    where("status", "==", "exited"),
-    where("exitTime", ">=", Timestamp.fromDate(startDate)),
-    where("exitTime", "<=", Timestamp.fromDate(endDate)),
-    orderBy("exitTime", "asc"),
-  )
-
-  if (lotId) {
-    q = query(
-      slipsRef,
-      where("status", "==", "exited"),
-      where("lotId", "==", lotId),
-      where("exitTime", ">=", Timestamp.fromDate(startDate)),
-      where("exitTime", "<=", Timestamp.fromDate(endDate)),
-      orderBy("exitTime", "asc"),
-    )
-  }
-
+export async function getDefaultSlab(){
+  const col = collection(db, "pricing", "default", "slabs")
+  const q = query(col)
   const snapshot = await getDocs(q)
   return snapshot.docs.map((doc) => ({
     id: doc.id,
     ...doc.data(),
-  })) as ParkingSlip[]
+  })) as VehicleType[]
 }
+
+export async function setSlabByLotId(lotId: string, slabs: VehicleType[]) {
+  const batch = writeBatch(db)
+  // Clear existing slabs
+  const col = collection(db, "lots", lotId, "pricing")
+  const existingSlabs = await getDocs(col)
+  existingSlabs.docs.forEach((doc) => {
+    batch.delete(doc.ref)
+  })
+
+  // Add new slabs
+  slabs.forEach((slab) => {
+    const slabRef = doc(col)
+    batch.set(slabRef, slab)
+  })
+
+  await batch.commit()
+}
+
+export async function getVehicle(lotId: string, license: string): Promise<(EntryDetails&{id:string})[]> {
+  const col = collection(db, "lots", lotId, "active")
+  const q = query(col, where("enteredPlate", "==", license))
+  const snapshot = await getDocs(q)
+  return snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  })) as (EntryDetails&{id:string})[]
+}
+
+
+
 

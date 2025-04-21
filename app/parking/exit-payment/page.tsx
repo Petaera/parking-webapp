@@ -6,51 +6,73 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Camera, RefreshCw, Check } from "lucide-react"
+import { Camera, RefreshCw, Check, Info } from "lucide-react"
 import Header from "@/components/header"
 import { useFirebase } from "@/contexts/firebase-context"
-import { getActiveVehicles, updateParkingSlip, type ParkingSlip } from "@/lib/firestore-service"
+import { EntryDetails, getExitVehicleDetails, getLots, getSlabByLotId, getVehicle, Lot, saveExitVehicleDetails, updateVehicleDetails, VehicleStatus, VehicleType } from "@/lib/firestore-service"
 import { Timestamp } from "firebase/firestore"
+import { useRouter, useSearchParams } from "next/navigation"
+import Loading from "@/components/loading"
+import toast, { Toaster } from "react-hot-toast"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@radix-ui/react-tooltip"
 
 export default function ExitPayment() {
-  const { userData } = useFirebase()
+  const { loading, user, userData } = useFirebase()
+  const [lots, setLots] = useState<Lot[]>([]);
   const [vehicleNumber, setVehicleNumber] = useState("")
   const [vehicleFound, setVehicleFound] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState("cash")
   const [isProcessing, setIsProcessing] = useState(false)
-  const [isComplete, setIsComplete] = useState(false)
-  const [totalAmount, setTotalAmount] = useState("150")
-  const [activeVehicles, setActiveVehicles] = useState<ParkingSlip[]>([])
-  const [selectedVehicle, setSelectedVehicle] = useState<ParkingSlip | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [pricingSlabs, setPricingSlabs] = useState<VehicleType[]>([]);
+  const [totalHours, setTotalHours] = useState(0)
+  const [selectedVehicle, setSelectedVehicle] = useState<EntryDetails &{id:string}| null>(null)
+  const [manualAmount, setManualAmount] = useState<string | null>(null)
+  const [isFetchingPlate, setIsFetchingPlate] = useState(false)
+  const [fetchedPlate, setFetchedPlate] = useState<string>("")
+  const [fee, setFee] = useState(0)
+  const searchParams = useSearchParams()
+  const router = useRouter();
+  const lot = searchParams.get('lot')
+
 
   useEffect(() => {
-    const fetchActiveVehicles = async () => {
-      try {
-        const vehicles = await getActiveVehicles()
-        setActiveVehicles(vehicles)
-      } catch (error) {
-        console.error("Error fetching active vehicles:", error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
+    getLots().then((l) => {
+      setLots(l)
+    });
 
-    fetchActiveVehicles()
   }, [])
 
-  const simulateVehicleScan = () => {
-    // In a real app, this would use camera detection
-    // For now, just pick a random vehicle from the active vehicles
-    if (activeVehicles.length > 0) {
-      const randomVehicle = activeVehicles[Math.floor(Math.random() * activeVehicles.length)]
-      setVehicleNumber(randomVehicle.enteredPlate)
-      handleSearch(randomVehicle.enteredPlate)
-    }
+  useEffect(() => {
+    if (lot === null) return
+    getSlabByLotId(lot).then((slabs) => {
+      setPricingSlabs(slabs)
+    })
+  }, [lot])
+
+  const selectSLot = (lotId: string) => {
+    if (!lotId) return
+    router.replace(`?lot=${lotId}`)
   }
 
-  const handleSearch = (plateNumber = vehicleNumber) => {
-    const vehicle = activeVehicles.find((v) => v.enteredPlate === plateNumber)
+  const simulateVehicleScan = () => {
+    if (!lot) return
+    setIsFetchingPlate(true)
+    getExitVehicleDetails(lot).then((vehicle) => {
+      setIsFetchingPlate(false)
+      setVehicleNumber(vehicle.plate)
+      setFetchedPlate(vehicle.plate)
+      handleSearch(vehicle.plate)
+    }).catch((error) => {
+      console.error("Error fetching vehicle details:", error)
+      toast.error("Failed to fetch vehicle details.")
+      setIsFetchingPlate(false)
+    })
+  }
+
+  const handleSearch = async (plateNumber = vehicleNumber) => {
+    if (!lot || !plateNumber) return
+    const vehicles = await getVehicle(lot, plateNumber)
+    const vehicle = vehicles[0]
     if (vehicle) {
       setSelectedVehicle(vehicle)
       setVehicleFound(true)
@@ -61,52 +83,139 @@ export default function ExitPayment() {
       const durationMs = currentTime.getTime() - entryTime.getTime()
       const durationHours = durationMs / (1000 * 60 * 60)
 
-      // Simple calculation for demo purposes
-      // In a real app, you'd use the pricing slabs
-      const calculatedFee = Math.ceil(durationHours) * 50
-      setTotalAmount(calculatedFee.toString())
+      if(durationHours > vehicle.duration)
+        setTotalHours(durationHours);
+      else
+        setTotalHours(vehicle.duration);
+      console.log("Duration in hours:", durationHours)
     } else {
-      alert("Vehicle not found. Please try again.")
+      toast.error("Vehicle not found. Please try again.")
       setSelectedVehicle(null)
       setVehicleFound(false)
     }
   }
 
+  const calculateFee = () => {
+    const vehicleSlabs = pricingSlabs.find((slab) => slab.id === selectedVehicle?.enteredType)?.slabs
+    if (!vehicleSlabs) return 0
+    console.log("Vehicle Slabs:", vehicleSlabs)
+    // For durations longer than 24 hours
+    if (totalHours > 24) {
+      const fullDays = Math.floor(totalHours / 24)
+      const remainingHours = totalHours % 24
+
+      // Find the 24-hour additional slab
+      const additionalDaySlab = vehicleSlabs.find(slab => slab.rangeType === "eachAdditional")
+      const dayFee = additionalDaySlab ? additionalDaySlab.fee : 0
+
+      // Calculate remaining hours fee
+      let remainingFee = 0
+      if (remainingHours > 0) {
+        for (const slab of vehicleSlabs) {
+          if (slab.rangeType === "upTo" && remainingHours <= slab.hours) {
+            remainingFee = slab.fee
+            break
+          }
+        }
+      }
+
+      return (fullDays * dayFee) + remainingFee
+    }
+
+    // For durations less than or equal to 24 hours
+    for (const slab of vehicleSlabs) {
+      if (slab.rangeType === "upTo" && totalHours <= slab.hours) {
+        return slab.fee
+      }
+    }
+
+    return 0
+  }
+
+  // Get the current pricing slab label
+  const getCurrentSlabLabel = () => {
+    const vehicleSlabs = pricingSlabs.find((slab) => slab.id === selectedVehicle?.enteredType)?.slabs
+    if (!vehicleSlabs) return ""
+
+    if (totalHours > 24) {
+      const fullDays = Math.floor(totalHours / 24)
+      const remainingHours = totalHours % 24
+
+      const additionalDaySlab = vehicleSlabs.find(slab => slab.rangeType === "eachAdditional")
+      let remainingSlabLabel = ""
+
+      if (remainingHours > 0) {
+        for (const slab of vehicleSlabs) {
+          if (slab.rangeType === "upTo" && remainingHours <= slab.hours) {
+            remainingSlabLabel = `${slab.hours}hr @ ₹${slab.fee}`
+            break
+          }
+        }
+      }
+
+      const daySlabLabel = additionalDaySlab ? `24${additionalDaySlab.hours === 24 ? 'day' : 'hr'} @ ₹${additionalDaySlab.fee}` : ""
+      return `${fullDays} x ${daySlabLabel}${remainingHours > 0 ? ` + ${remainingSlabLabel}` : ""}`
+    }
+
+    for (const slab of vehicleSlabs) {
+      if (slab.rangeType === "upTo" && totalHours <= slab.hours) {
+        return `${slab.hours}hr @ ₹${slab.fee}`
+      }
+    }
+
+    return ""
+  }
+
+
+
+  useEffect(() => {
+    setManualAmount(fee.toString())
+  },[fee])
+  useEffect(() => {
+    if (!totalHours || !pricingSlabs) return
+      setFee(calculateFee())
+  }, [totalHours, pricingSlabs])
+
+
   const handlePayment = async () => {
-    if (!selectedVehicle || !userData) return
+    if (!selectedVehicle || !userData || !lot) return
 
     setIsProcessing(true)
-
+    const details = {
+      exitedTime: Timestamp.now(),
+      feePaid: Number(manualAmount),
+      status: "exited" as VehicleStatus, 
+      paymentMethod: paymentMethod,
+      exitedByName: userData.displayName ?? ""
+    }
     try {
       // Update the parking slip in Firestore
-      await updateParkingSlip(selectedVehicle.id!, {
-        exitTime: Timestamp.now(),
-        feePaid: Number(totalAmount),
-        status: "exited",
-      })
+      if(fetchedPlate === vehicleNumber)
+        await saveExitVehicleDetails(lot, selectedVehicle.id, details)
+      else
+        throw new Error("Vehicle number mismatch")
 
-      setIsComplete(true)
+      resetForm()
+      toast.success("Recorded successfully!")
 
-      // Reset form after 3 seconds
-      setTimeout(() => {
-        setVehicleNumber("")
-        setVehicleFound(false)
-        setPaymentMethod("cash")
-        setTotalAmount("150")
-        setSelectedVehicle(null)
-        setIsComplete(false)
-
-        // Refresh active vehicles list
-        getActiveVehicles().then((vehicles) => {
-          setActiveVehicles(vehicles)
-        })
-      }, 3000)
     } catch (error) {
       console.error("Error processing payment:", error)
-      alert("Failed to process payment. Please try again.")
+      toast.success("Not captured. Saving details.")
+      updateVehicleDetails(lot, selectedVehicle.id, details).catch((error) => {
+        console.error("Error updating vehicle details:", error)
+        toast.error("Failed to update vehicle details.")
+      })
+      resetForm()
     } finally {
       setIsProcessing(false)
     }
+  }
+
+  const resetForm = () => {
+    setVehicleNumber("")
+    setVehicleFound(false)
+    setPaymentMethod("cash")
+    setSelectedVehicle(null)
   }
 
   // Calculate duration for display
@@ -119,21 +228,55 @@ export default function ExitPayment() {
     return `${diffHrs}h ${diffMins}m`
   }
 
-  if (isLoading) {
+  if (!lot)
     return (
       <div className="flex min-h-screen flex-col">
-        <Header title="Exit & Payment" />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+        <Header title="Generate Parking Slip" />
+        <div className="text-center flex flex-col flex-[1_1_0%] items-center justify-center">
+          <div className="space-y-4">
+            <select
+              id="lot-select"
+              onChange={(e) => selectSLot(e.target.value)}
+              className="border rounded px-2 py-1 mt-2"
+              disabled={lots.length === 0}
+            >
+              <option value="">Select a lot</option>
+              {lots.length === 0 ? (
+                <option>Loading...</option>
+              ) : (
+                lots.map((lot) => (
+                  <option key={lot.id} value={lot.id}>
+                    {lot.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
         </div>
       </div>
     )
-  }
+
+  if (loading)
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loading />
+      </div>
+    )
+  if (!user)
+    return (
+      <div className="flex min-h-screen flex-col">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold">Unauthorized</h1>
+          <p>Please sign in to access this page.</p>
+        </div>
+      </div>
+    )
+
 
   return (
     <div className="flex min-h-screen flex-col">
       <Header title="Exit & Payment" />
-
+      <Toaster />
       <div className="flex-1 p-4 pt-6 md:p-6">
         <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
           <Card>
@@ -151,7 +294,7 @@ export default function ExitPayment() {
               </div>
 
               <div className="flex flex-col sm:flex-row gap-2">
-                <Button variant="outline" className="flex-1" onClick={simulateVehicleScan}>
+                <Button variant="outline" className="flex-1" disabled={isFetchingPlate} onClick={simulateVehicleScan}>
                   <RefreshCw className="mr-2 h-4 w-4" />
                   Scan Vehicle
                 </Button>
@@ -182,7 +325,7 @@ export default function ExitPayment() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-slate-500">Vehicle Type:</span>
-                    <span>{selectedVehicle.vehicleType}</span>
+                    <span>{selectedVehicle.enteredType === "2" ? "two-wheeler" : "four-wheeler"}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-slate-500">Entry Time:</span>
@@ -192,32 +335,38 @@ export default function ExitPayment() {
                     <span className="text-sm text-slate-500">Duration:</span>
                     <span>{calculateDuration(selectedVehicle.entryTime.toDate())}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-slate-500">Parking Lot:</span>
-                    <span>{selectedVehicle.lotId}</span>
-                  </div>
                 </div>
 
-                <div className="rounded-md bg-slate-50 p-4 space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-slate-500">Base Amount:</span>
-                    <span>₹{Math.round(Number(totalAmount) * 0.8)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-slate-500">Additional Charges:</span>
-                    <span>₹{Math.round(Number(totalAmount) * 0.2)}</span>
-                  </div>
-                  <div className="flex justify-between border-t pt-2 mt-2">
-                    <span className="font-medium">Total Amount:</span>
+                <div className="rounded-md bg-slate-50 p-4 space-y-4">
+                  <div className="flex justify-between items-center">
                     <div className="flex items-center">
-                      <span className="mr-1">₹</span>
-                      <Input
-                        type="number"
-                        value={totalAmount}
-                        onChange={(e) => setTotalAmount(e.target.value)}
-                        className="w-20 h-8 text-right font-bold"
-                      />
+                      <span className="font-medium">Calculated Fee:</span>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 ml-1">
+                              <Info className="h-4 w-4 text-muted-foreground" />
+                              <span className="sr-only">Fee information</span>
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Based on: {getCurrentSlabLabel()}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </div>
+                    <span className="font-bold">₹{fee}</span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="manual-amount">Final Amount (Override)</Label>
+                    <Input
+                      id="manual-amount"
+                      type="number"
+                      value={manualAmount || ""}
+                      onChange={(e) => setManualAmount(e.target.value)}
+                      className="w-full"
+                    />
                   </div>
                 </div>
 
@@ -236,15 +385,11 @@ export default function ExitPayment() {
                 </div>
               </CardContent>
               <CardFooter>
-                <Button className="w-full" onClick={handlePayment} disabled={isProcessing || isComplete}>
+                <Button className="w-full" onClick={handlePayment} disabled={isProcessing}>
                   {isProcessing ? (
                     "Processing..."
-                  ) : isComplete ? (
-                    <span className="flex items-center">
-                      <Check className="mr-2 h-4 w-4" />
-                      Payment Complete
-                    </span>
-                  ) : (
+                  )
+                     : (
                     "Process Payment & Checkout"
                   )}
                 </Button>
