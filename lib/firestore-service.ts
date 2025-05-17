@@ -147,6 +147,16 @@ export async function getPaymentSlabs(lotId: string) {
   return null
 }
 
+export function getApiUrl(lotId: string) {
+  const docRef = doc(db, "lots", lotId, "device", "access")
+  return getDoc(docRef).then((docSnap) => {
+    if (docSnap.exists()) {
+      const data = docSnap.data()
+      return data.apiUrl
+    }
+    return null
+  })
+}
 export function addLot(lotData: Omit<Lot, "id" | "updatedAt">) {
   const lotsRef = collection(db, "lots")
   const newLot = {
@@ -217,142 +227,6 @@ export async function getLot(id: string) {
   }
   return null
 }
-
-export async function getEntryVehicleDetails(lotId: string): Promise<VehicleDetails> {
-  const deviceRef = collection(db, "lots", lotId, "device");
-  //watch for entry doc
-  const entryDocRef = doc(deviceRef, "entry");
-
-  // Set up a real-time listener
-  let uns;
-  const ret = new Promise<VehicleDetails>((resolve, reject) => {
-    //update entry doc
-    updateDoc(entryDocRef, {
-      scannedAt: serverTimestamp(),
-    }).catch((e) => reject(e));
-
-    const unsubscribe = onSnapshot(entryDocRef, (docSnap: DocumentSnapshot) => {
-      if (docSnap.exists()) {
-        const data: Record<string, any> = docSnap.data() as Record<string, any>;
-        if (data.recordedLicense && !data.scannedAt  && !docSnap.metadata.fromCache && !docSnap.metadata.hasPendingWrites) {
-          unsubscribe(); // Stop listening after resolving
-          console.log("Vehicle details: ", data, docSnap.metadata);
-          resolve({
-            plate: data.recordedLicense,
-            vehicleType: data.recordedType
-          });
-        }
-      }
-    });
-    uns = unsubscribe;
-  })
-
-  return withTimeout<VehicleDetails>(ret, 7000, uns);
-
-}
-
-export async function saveEntryVehicleDetails(lotId: string, data: EntryDetails): Promise<string> {
-  const deviceRef = collection(db, "lots", lotId, "device");
-  //watch for entry doc
-  const entryDocRef = doc(deviceRef, "entry");
-
-  let uns;
-  // Set up a real-time listener
-  const ret = new Promise<string>((resolve, reject) => {
-    //update entry doc
-    updateDoc(entryDocRef, {
-      ...data,
-      save: true
-    }).catch((e) => reject(e));
-
-    const activeCollection = collection(db, "lots", lotId, "active");
-    const activeVehicle = query(activeCollection, where("entryTime", "==", data.entryTime));
-    const unsubscribe = onSnapshot(activeVehicle, (querySnapshot) => {
-      if (!querySnapshot.empty) {
-        const docSnap = querySnapshot.docs[0];
-        const data = docSnap.data();
-        console.log("Vehicle details: ", data, docSnap.metadata);
-        if (data.save && !docSnap.metadata.fromCache && !docSnap.metadata.hasPendingWrites) {
-          unsubscribe(); // Stop listening after resolving
-          resolve(docSnap.id);
-        }
-      }
-    });
-    uns = unsubscribe;
-  })
-
-  return withTimeout<string>(ret, 4000, uns);
-}
-
-
-export async function getExitVehicleDetails(lotId: string): Promise<VehicleDetails> {
-  const deviceRef = collection(db, "lots", lotId, "device");
-  //watch for entry doc
-  const exitDocRef = doc(deviceRef, "exit");
-
-  // Set up a real-time listener
-  let uns;
-  const ret = new Promise<VehicleDetails>((resolve, reject) => {
-    //update entry doc
-    updateDoc(exitDocRef, {
-      scannedAt: serverTimestamp(),
-    }).catch((e) => reject(e));
-
-    const unsubscribe = onSnapshot(exitDocRef, (docSnap: DocumentSnapshot) => {
-      if (docSnap.exists()) {
-        const data: Record<string, any> = docSnap.data() as Record<string, any>;
-        if (data.recordedExitLicense && !data.scannedAt  && !docSnap.metadata.fromCache && !docSnap.metadata.hasPendingWrites) {
-          unsubscribe(); // Stop listening after resolving
-          console.log("Vehicle details: ", data, docSnap.metadata);
-          resolve({
-            plate: data.recordedExitLicense,
-            vehicleType: data.recordedExitType
-          });
-        }
-      }
-    });
-    uns = unsubscribe;
-  })
-
-  return withTimeout<VehicleDetails>(ret, 7000, uns);
-
-}
-
-
-
-export async function saveExitVehicleDetails(lotId: string, vehicle_id: string, data: Partial<EntryDetails>): Promise<string> {
-  const deviceRef = collection(db, "lots", lotId, "device");
-  //watch for entry doc
-  const entryDocRef = doc(deviceRef, "exit");
-
-  let uns;
-  // Set up a real-time listener
-  const ret = new Promise<string>((resolve, reject) => {
-    //update entry doc
-    updateDoc(entryDocRef, {
-      ...data,
-      vehicle: vehicle_id,
-      save: true
-    }).catch((e) => reject(e));
-
-    const d = doc(db, "lots", lotId, "active", vehicle_id);
-    const unsubscribe = onSnapshot(d, (docSnapshot) => {
-      if (docSnapshot.exists()) {
-      const data = docSnapshot.data();
-      console.log("Vehicle details: ", data, docSnapshot.metadata);
-      if (data.save && !docSnapshot.metadata.fromCache && !docSnapshot.metadata.hasPendingWrites) {
-        unsubscribe(); // Stop listening after resolving
-        resolve(docSnapshot.id);
-      }
-      }
-    });
-    uns = unsubscribe;
-  })
-
-  return withTimeout<string>(ret, 4000, uns);
-}
-
-
 
 export async function saveVehicleDetails(lotId: string, data: EntryDetails): Promise<string> {
   const activeCollection = collection(db, "lots", lotId, "active");

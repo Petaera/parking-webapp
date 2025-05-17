@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Camera, RefreshCw, Check, Info } from "lucide-react"
 import Header from "@/components/header"
 import { useFirebase } from "@/contexts/firebase-context"
-import { EntryDetails, getExitVehicleDetails, getLots, getSlabByLotId, getVehicle, Lot, saveExitVehicleDetails, updateVehicleDetails, VehicleStatus, VehicleType } from "@/lib/firestore-service"
+import { EntryDetails, getApiUrl, getLots, getSlabByLotId, getVehicle, Lot, updateVehicleDetails, VehicleStatus, VehicleType } from "@/lib/firestore-service"
+import { getVehicle as getVehicleFromCam, saveExit} from "@/lib/api-service"
 import { Timestamp } from "firebase/firestore"
 import { useRouter, useSearchParams } from "next/navigation"
 import Loading from "@/components/loading"
@@ -25,15 +26,18 @@ export default function ExitPayment() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [pricingSlabs, setPricingSlabs] = useState<VehicleType[]>([]);
   const [totalHours, setTotalHours] = useState(0)
-  const [selectedVehicle, setSelectedVehicle] = useState<EntryDetails &{id:string}| null>(null)
+  const [selectedVehicle, setSelectedVehicle] = useState<EntryDetails & { id: string } | null>(null)
   const [manualAmount, setManualAmount] = useState<string | null>(null)
   const [isFetchingPlate, setIsFetchingPlate] = useState(false)
   const [fetchedPlate, setFetchedPlate] = useState<string>("")
+  const [vehicleImage, setVehicleImage] = useState<string | null>(null)
+  const [token, setToken] = useState<string | null>(null)
   const [fee, setFee] = useState(0)
   const searchParams = useSearchParams()
   const router = useRouter();
   const lot = searchParams.get('lot')
 
+  const apiUrl = useRef<string>("");
 
   useEffect(() => {
     getLots().then((l) => {
@@ -46,7 +50,11 @@ export default function ExitPayment() {
     if (lot === null) return
     getSlabByLotId(lot).then((slabs) => {
       setPricingSlabs(slabs)
-    })
+    });
+    getApiUrl(lot).then((url) => {
+      console.log(url);
+      apiUrl.current = url;
+    });
   }, [lot])
 
   const selectSLot = (lotId: string) => {
@@ -54,19 +62,26 @@ export default function ExitPayment() {
     router.replace(`?lot=${lotId}`)
   }
 
-  const simulateVehicleScan = () => {
+  const simulateVehicleScan = async () => {
     if (!lot) return
-    setIsFetchingPlate(true)
-    getExitVehicleDetails(lot).then((vehicle) => {
-      setIsFetchingPlate(false)
-      setVehicleNumber(vehicle.plate)
-      setFetchedPlate(vehicle.plate)
-      handleSearch(vehicle.plate)
-    }).catch((error) => {
-      console.error("Error fetching vehicle details:", error)
+    setIsFetchingPlate(true);
+    try{
+    const { plate, type, image, token } = await getVehicleFromCam(apiUrl.current, "exit");
+    setIsFetchingPlate(false);
+    setToken(token);
+    if(plate){
+      setVehicleNumber(plate)
+      setFetchedPlate(plate)
+      handleSearch(plate)
+    }
+    if(image){
+      setVehicleImage(image)
+    }
+    }catch(e){
+      console.error("Error fetching vehicle details:", e)
       toast.error("Failed to fetch vehicle details.")
       setIsFetchingPlate(false)
-    })
+    }
   }
 
   const handleSearch = async (plateNumber = vehicleNumber) => {
@@ -83,7 +98,7 @@ export default function ExitPayment() {
       const durationMs = currentTime.getTime() - entryTime.getTime()
       const durationHours = durationMs / (1000 * 60 * 60)
 
-      if(durationHours > vehicle.duration)
+      if (durationHours > vehicle.duration)
         setTotalHours(durationHours);
       else
         setTotalHours(vehicle.duration);
@@ -170,10 +185,10 @@ export default function ExitPayment() {
 
   useEffect(() => {
     setManualAmount(fee.toString())
-  },[fee])
+  }, [fee])
   useEffect(() => {
     if (!totalHours || !pricingSlabs) return
-      setFee(calculateFee())
+    setFee(calculateFee())
   }, [totalHours, pricingSlabs])
 
 
@@ -182,25 +197,24 @@ export default function ExitPayment() {
 
     setIsProcessing(true)
     const details = {
-      exitedTime: Timestamp.now(),
+      docId: selectedVehicle.id,
       feePaid: Number(manualAmount),
-      status: "exited" as VehicleStatus, 
       paymentMethod: paymentMethod,
-      exitedByName: userData.displayName ?? ""
     }
     try {
-      // Update the parking slip in Firestore
-      if(fetchedPlate === vehicleNumber)
-        await saveExitVehicleDetails(lot, selectedVehicle.id, details)
-      else
-        throw new Error("Vehicle number mismatch")
-
+      await saveExit(apiUrl.current, details, token);
       resetForm()
       toast.success("Recorded successfully!")
-
     } catch (error) {
       console.error("Error processing payment:", error)
       toast.success("Not captured. Saving details.")
+      const details = {
+        enteredExitedTime: Timestamp.now(),
+        feePaid: Number(manualAmount),
+        status: "exited" as VehicleStatus, 
+        paymentMethod: paymentMethod,
+        exitedByName: userData.displayName ?? ""
+      }
       updateVehicleDetails(lot, selectedVehicle.id, details).catch((error) => {
         console.error("Error updating vehicle details:", error)
         toast.error("Failed to update vehicle details.")
@@ -285,11 +299,19 @@ export default function ExitPayment() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="relative aspect-video overflow-hidden rounded-md bg-slate-100">
-                <div className="flex h-full items-center justify-center">
-                  <Camera className="h-16 w-16 text-slate-300" />
-                </div>
+                {vehicleImage ? (
+                  <img
+                    src={vehicleImage || "/placeholder.svg"}
+                    alt="Vehicle"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center">
+                    <Camera className="h-16 w-16 text-slate-300" />
+                  </div>
+                )}
                 <div className="absolute bottom-0 left-0 right-0 bg-slate-800/70 p-2 text-center text-sm text-white">
-                  Exit Camera Feed (Simulated)
+                  Exit Camera Feed
                 </div>
               </div>
 
@@ -389,9 +411,9 @@ export default function ExitPayment() {
                   {isProcessing ? (
                     "Processing..."
                   )
-                     : (
-                    "Process Payment & Checkout"
-                  )}
+                    : (
+                      "Process Payment & Checkout"
+                    )}
                 </Button>
               </CardFooter>
             </Card>

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { use, useEffect } from "react"
+import React, { useEffect, useRef } from "react"
 
 import { useState } from "react"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,12 +13,15 @@ import { Camera, RefreshCw, Info } from "lucide-react"
 import Header from "@/components/header"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useFirebase } from "@/contexts/firebase-context"
-import { getEntryVehicleDetails, getLots, getSlabByLotId, Lot, saveEntryVehicleDetails, saveVehicleDetails, VehicleStatus, VehicleType } from "@/lib/firestore-service"
+import { getApiUrl, getLots, getSlabByLotId, Lot, saveVehicleDetails, VehicleStatus, VehicleType } from "@/lib/firestore-service"
 import { Timestamp } from "firebase/firestore"
 import { useRouter } from "next/navigation";
 import { useSearchParams } from 'next/navigation'
 import { Toaster, toast } from 'react-hot-toast';
 import Loading from "@/components/loading"
+import { getVehicle, saveEntry } from "@/lib/api-service"
+import { set } from "react-hook-form"
+import { getDownloadUrl } from "@/lib/storage-service"
 
 
 export default function GenerateSlip() {
@@ -31,7 +34,10 @@ export default function GenerateSlip() {
   const [manualAmount, setManualAmount] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isFetchingPlate, setIsFetchingPlate] = useState(false)
-  const [vehicleImage, setVehicleImage] = useState<File | null>(null)
+  const [vehicleImage, setVehicleImage] = useState<string | null>(null)
+  const [token, setToken] = useState<string | null>(null)
+
+  const apiUrl = useRef<string>("");
   const searchParams = useSearchParams()
   const router = useRouter();
   const lot = searchParams.get('lot')
@@ -44,13 +50,17 @@ export default function GenerateSlip() {
       setLots(l)
     });
 
+
   }, [])
 
   useEffect(() => {
     if (lot === null) return
     getSlabByLotId(lot).then((slabs) => {
       setPricingSlabs(slabs)
-    })
+    });
+    getApiUrl(lot).then((url) => {
+      apiUrl.current = url;
+    });
   }, [lot])
 
   const selectSLot = (lotId: string) => {
@@ -141,27 +151,36 @@ export default function GenerateSlip() {
 
     setIsGenerating(true)
     const vehicleDetails = {
-      createdBy: userData.uid,
-      createdByName: userData.displayName?? "",
       enteredPlate: vehicleNumber,
       enteredType: vehicleType,
-      entryTime: Timestamp.now(),
-      exitTime: Timestamp.fromDate(new Date(Date.now() + totalHours * 60 * 60 * 1000)),
+      exitTime: new Date(Date.now() + totalHours * 60 * 60 * 1000).toISOString(),
       duration: totalHours,
       paymentSlab: getCurrentSlabLabel(),
       fee: Number(manualAmount),
-      status: "active" as VehicleStatus,
     }
 
     try {
       // Create parking slip in Firestore
-      await saveEntryVehicleDetails(lot, vehicleDetails)
-      toast.success("Parking slip generated successfully!")
+      const ret = await saveEntry(apiUrl.current, vehicleDetails, token)
+      if(ret.print_success)
+        toast.success("Parking slip generated successfully!")
       resetForm()
     } catch (error) {
       console.error("Error generating slip:", error)
       toast.error("Failed to generate parking slip. Saving details")
-      await saveVehicleDetails(lot, vehicleDetails)
+      const details = {
+        createdBy: userData.uid,
+        createdByName: userData.displayName?? "",
+        enteredPlate: vehicleNumber,
+        enteredType: vehicleType,
+        entryTime: Timestamp.now(),
+        exitTime: Timestamp.fromDate(new Date(Date.now() + totalHours * 60 * 60 * 1000)),
+        duration: totalHours,
+        paymentSlab: getCurrentSlabLabel(),
+        fee: Number(manualAmount),
+        status: "active" as VehicleStatus,
+      }
+      await saveVehicleDetails(lot, details)
       resetForm();
     } finally {
       setIsGenerating(false)
@@ -184,11 +203,20 @@ export default function GenerateSlip() {
     try {
       console.log("Simulating vehicle scan...")
       setIsFetchingPlate(true)
-      const { plate, vehicleType } = await getEntryVehicleDetails(lot);
-      setVehicleNumber(plate)
+      const { plate, type, image, token } = await getVehicle(apiUrl.current, "entry");
+      setToken(token);
+      if(plate) 
+        setVehicleNumber(plate);
+      if(type)
+        setVehicleType(type)
+      if(image){
+        const imgUrl = await getDownloadUrl(image);
+        if(imgUrl)
+          setVehicleImage(imgUrl);
+      }
+
       console.log("Detected plate:", plate)
       console.log("Detected vehicle type:", vehicleType)
-      setVehicleType(vehicleType)
     } catch (e: any) {
         toast.error("Failed to fetch vehicle details. Please try again.");
     } finally {
@@ -254,7 +282,7 @@ export default function GenerateSlip() {
               <div className="relative aspect-video overflow-hidden rounded-md bg-slate-100">
                 {vehicleImage ? (
                   <img
-                    src={URL.createObjectURL(vehicleImage) || "/placeholder.svg"}
+                    src={vehicleImage || "/placeholder.svg"}
                     alt="Vehicle"
                     className="h-full w-full object-cover"
                   />
