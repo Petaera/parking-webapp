@@ -205,21 +205,22 @@ export default function GenerateSlip() {
     try {
       console.log("Simulating vehicle scan...")
       setIsFetchingPlate(true)
-      const { plate, type, image, token } = await getVehicle(apiUrl.current, "entry");
+      const { token } = await getVehicle(apiUrl.current, "entry");
       setToken(token);
-      const decodedToken = parseJWT(token); 
-      if(decodedToken.plate) 
-        setVehicleNumber(decodedToken.plate);
-      if(decodedToken.type)
-        setVehicleType(decodedToken.type)
-      if(decodedToken.image){
+      const {vehicle={}} = parseJWT(token); 
+      if(vehicle.plate) 
+        setVehicleNumber(vehicle.plate);
+      if(vehicle.type)
+        setVehicleType(vehicle.type)
+      if(vehicle.image){
         // const imgUrl = await getDownloadUrl(image);
         // if(imgUrl)
-          setVehicleImage(decodedToken.image);
+          setVehicleImage(vehicle.image);
       }
 
-      console.log("Detected plate:", plate)
-      console.log("Detected vehicle type:", vehicleType)
+      console.log("Detected plate:", vehicle.plate)
+      console.log("Detected vehicle type:", vehicle.type)
+      console.log("Detected image:", vehicle.image)
     } catch (e: any) {
         toast.error("Failed to fetch vehicle details. Please try again.");
     } finally {
