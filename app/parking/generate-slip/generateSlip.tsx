@@ -22,6 +22,7 @@ import Loading from "@/components/loading"
 import { getVehicle, saveEntry } from "@/lib/api-service"
 import { set } from "react-hook-form"
 import { getDownloadUrl } from "@/lib/storage-service"
+import { parseJWT } from "@/lib/utils"
 
 
 export default function GenerateSlip() {
@@ -46,11 +47,12 @@ export default function GenerateSlip() {
   const totalHours = hours + days * 24
 
   useEffect(() => {
-    getLots().then((l) => {
-      setLots(l)
+    getLots(true).then((l) => {
+      console.log(l);
+      setLots(l);
     });
-
-
+    console.log("Fetching lots")
+    setManualAmount(fee.toString())
   }, [])
 
   useEffect(() => {
@@ -63,7 +65,7 @@ export default function GenerateSlip() {
     });
   }, [lot])
 
-  const selectSLot = (lotId: string) => {
+  const selectSlot = (lotId: string) => {
     if (!lotId) return
     router.replace(`?lot=${lotId}`)
   }
@@ -205,14 +207,15 @@ export default function GenerateSlip() {
       setIsFetchingPlate(true)
       const { plate, type, image, token } = await getVehicle(apiUrl.current, "entry");
       setToken(token);
-      if(plate) 
-        setVehicleNumber(plate);
-      if(type)
-        setVehicleType(type)
-      if(image){
-        const imgUrl = await getDownloadUrl(image);
-        if(imgUrl)
-          setVehicleImage(imgUrl);
+      const decodedToken = parseJWT(token); 
+      if(decodedToken.plate) 
+        setVehicleNumber(decodedToken.plate);
+      if(decodedToken.type)
+        setVehicleType(decodedToken.type)
+      if(decodedToken.image){
+        // const imgUrl = await getDownloadUrl(image);
+        // if(imgUrl)
+          setVehicleImage(decodedToken.image);
       }
 
       console.log("Detected plate:", plate)
@@ -232,7 +235,7 @@ export default function GenerateSlip() {
           <div className="space-y-4">
             <select
               id="lot-select"
-              onChange={(e) => selectSLot(e.target.value)}
+              onChange={(e) => selectSlot(e.target.value)}
               className="border rounded px-2 py-1 mt-2"
               disabled={lots.length === 0}
             >
@@ -316,7 +319,7 @@ export default function GenerateSlip() {
                   <Input
                     id="vehicle-number"
                     value={vehicleNumber}
-                    onChange={(e) => setVehicleNumber(e.target.value)}
+                    onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())}
                     placeholder="Enter vehicle number"
                     className="flex-1"
                   />

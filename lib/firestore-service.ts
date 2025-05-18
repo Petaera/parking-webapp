@@ -5,21 +5,15 @@ import {
   getDocs,
   addDoc,
   updateDoc,
-  deleteDoc,
   query,
   where,
-  orderBy,
   serverTimestamp,
   Timestamp,
   arrayUnion,
   arrayRemove,
-  onSnapshot,
-  DocumentSnapshot,
   writeBatch,
 } from "firebase/firestore"
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
-import { db, storage } from "./firebase"
-import { withTimeout } from "./utils"
+import { db } from "./firebase"
 
 export interface UserData {
   uid: string
@@ -58,10 +52,6 @@ export interface EntryDetails {
   status: VehicleStatus
 }
 
-interface VehicleDetails {
-  plate: string
-  vehicleType: string
-}
 
 export type TimeRangeType = "upTo" | "eachAdditional" | "between"
 
@@ -135,17 +125,6 @@ export async function getLots(forceFetch: boolean = false):Promise<Lot[]> {
   return lots;
 }
 
-export async function getPaymentSlabs(lotId: string) {
-  const docRef = doc(db, "lots", lotId, "pricing")
-  const docSnap = await getDoc(docRef)
-  if (docSnap.exists()) {
-    return {
-      id: docSnap.id,
-      ...docSnap.data(),
-    } as Lot
-  }
-  return null
-}
 
 export function getApiUrl(lotId: string) {
   const docRef = doc(db, "lots", lotId, "device", "access")
@@ -177,10 +156,10 @@ export function editLot(id: string, lotData: Partial<Lot>) {
   })
 }
 
-export function deleteLotDocument(id: string) {
-  const docRef = doc(db, "lots", id)
-  return deleteDoc(docRef)
-}
+// export function deleteLotDocument(id: string) {
+//   const docRef = doc(db, "lots", id)
+//   return deleteDoc(docRef)
+// }
 
 export async function deleteLot(id: string) {
   //soft delete lot
@@ -229,13 +208,13 @@ export async function getLot(id: string) {
 }
 
 export async function saveVehicleDetails(lotId: string, data: EntryDetails): Promise<string> {
-  const activeCollection = collection(db, "lots", lotId, "active");
+  const activeCollection = collection(db, "lots", lotId, "vehicles");
   const docRef = await addDoc(activeCollection, data);
   return docRef.id;
 }
 
 export async function updateVehicleDetails(lotId: string, vehicleId: string, data: Partial<EntryDetails>) {
-  const docRef = doc(db, "lots", lotId, "active", vehicleId)
+  const docRef = doc(db, "lots", lotId, "vehicles", vehicleId)
   await updateDoc(docRef, {
     ...data,
     updatedAt: serverTimestamp(),
@@ -262,6 +241,18 @@ export async function getSlabByLotId(lotId: string) {
   
 }
 
+// export async function getPaymentSlabs(lotId: string) {
+//   const docRef = doc(db, "lots", lotId, "pricing")
+//   const docSnap = await getDoc(docRef)
+//   if (docSnap.exists()) {
+//     return {
+//       id: docSnap.id,
+//       ...docSnap.data(),
+//     } as Lot
+//   }
+//   return null
+// }
+
 export async function getDefaultSlab(){
   const col = collection(db, "pricing", "default", "slabs")
   const q = query(col)
@@ -271,6 +262,8 @@ export async function getDefaultSlab(){
     ...doc.data(),
   })) as VehicleType[]
 }
+
+
 
 export async function setSlabByLotId(lotId: string, slabs: VehicleType[]) {
   const batch = writeBatch(db)
@@ -291,7 +284,7 @@ export async function setSlabByLotId(lotId: string, slabs: VehicleType[]) {
 }
 
 export async function getVehicle(lotId: string, license: string): Promise<(EntryDetails&{id:string})[]> {
-  const col = collection(db, "lots", lotId, "active")
+  const col = collection(db, "lots", lotId, "vehicles")
   const q = query(col, where("enteredPlate", "==", license))
   const snapshot = await getDocs(q)
   return snapshot.docs.map((doc) => ({

@@ -15,3 +15,10 @@ export function withTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout
 
   return Promise.race([promise, timeout]);
 }
+
+
+export function parseJWT(token: string) {
+  const payload = token.split(".")[1];
+  const decodedPayload = atob(payload);
+  return JSON.parse(decodedPayload);
+}
