@@ -65,9 +65,8 @@ export async function saveEntry(url: string, payload: SaveEntryPayload, vehicleT
         headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${firebaseToken}`,
-            "token": vehicleToken ?? ""
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({token:vehicleToken, ...payload})
     });
     if (!res.ok) {
         throw new Error("Failed to save entry details");
@@ -82,9 +81,8 @@ export async function saveExit(url: string, payload: SaveExitPayload, vehicleTok
         headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${firebaseToken}`,
-            "token": vehicleToken ?? ""
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({token:vehicleToken, ...payload})
     });
     if (!res.ok) {
         throw new Error("Failed to save exit details");

@@ -44,7 +44,6 @@ export default function GenerateSlip() {
   const lot = searchParams.get('lot')
   const { loading, user, userData } = useFirebase()
   // Calculate total duration in hours
-  const totalHours = hours + days * 24
 
   useEffect(() => {
     getLots(true).then((l) => {
@@ -52,7 +51,7 @@ export default function GenerateSlip() {
       setLots(l);
     });
     console.log("Fetching lots")
-    setManualAmount(fee.toString())
+    setManualAmount(calculateFee().toString())
   }, [])
 
   useEffect(() => {
@@ -65,6 +64,12 @@ export default function GenerateSlip() {
     });
   }, [lot])
 
+  React.useEffect(() => {
+    console.log("Fee calculated:", hours, days)
+    console.log(calculateFee().toString())
+    setManualAmount(calculateFee().toString())
+  }, [hours, days, pricingSlabs])
+
   const selectSlot = (lotId: string) => {
     if (!lotId) return
     router.replace(`?lot=${lotId}`)
@@ -73,6 +78,7 @@ export default function GenerateSlip() {
   const calculateFee = () => {
     const vehicleSlabs = pricingSlabs.find((slab) => slab.id === vehicleType)?.slabs
     if (!vehicleSlabs) return 0
+    const totalHours = hours + days * 24
 
     // For durations longer than 24 hours
     if (totalHours > 24) {
@@ -94,6 +100,7 @@ export default function GenerateSlip() {
         }
       }
 
+      console.log("Full days:", fullDays, dayFee, remainingFee);
       return (fullDays * dayFee) + remainingFee
     }
 
@@ -109,6 +116,8 @@ export default function GenerateSlip() {
 
   // Get the current pricing slab label
   const getCurrentSlabLabel = () => {
+    const totalHours = hours + days * 24
+
     const vehicleSlabs = pricingSlabs.find((slab) => slab.id === vehicleType)?.slabs
     if (!vehicleSlabs) return ""
 
@@ -144,13 +153,18 @@ export default function GenerateSlip() {
   const fee = calculateFee()
 
   // Update manual amount when fee changes
-  React.useEffect(() => {
-    setManualAmount(fee.toString())
-  }, [fee])
+  // React.useEffect(() => {
+  //   setManualAmount(fee.toString())
+
+  // }, [fee])
+
+
 
   const handleGenerateSlip = async () => {
     if (!userData || !lot) return
+    const totalHours = hours + days * 24
 
+    console.log(manualAmount, fee);
     setIsGenerating(true)
     const vehicleDetails = {
       enteredPlate: vehicleNumber,
