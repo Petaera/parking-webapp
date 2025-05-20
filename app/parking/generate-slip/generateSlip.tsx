@@ -185,12 +185,12 @@ export default function GenerateSlip() {
       console.error("Error generating slip:", error)
       toast.error("Failed to generate parking slip. Saving details")
       const details = {
-        createdBy: userData.uid,
-        createdByName: userData.displayName?? "",
+        enteredCreatedBy: userData.uid,
+        enteredCreatedByName: userData.displayName?? "",
         enteredPlate: vehicleNumber,
         enteredType: vehicleType,
-        entryTime: Timestamp.now(),
-        exitTime: Timestamp.fromDate(new Date(Date.now() + totalHours * 60 * 60 * 1000)),
+        enteredEntryTime: Timestamp.now(),
+        enteredExitTime: Timestamp.fromDate(new Date(Date.now() + totalHours * 60 * 60 * 1000)),
         duration: totalHours,
         paymentSlab: getCurrentSlabLabel(),
         fee: Number(manualAmount),

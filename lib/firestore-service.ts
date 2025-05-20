@@ -36,20 +36,23 @@ export interface Lot {
 export type VehicleStatus = "active" | "exited" | "fraud"
 
 export interface EntryDetails {
-  createdBy: string
-  createdByName: string
+  createdBy?: string
+  createdByName?: string
+  enteredCreatedBy: string
+  enteredCreatedByName: string
+  duration: number
+  entryTime?: Timestamp
+  enteredEntryTime: Timestamp
   enteredPlate: string
   enteredType: string
-  entryTime: Timestamp
-  exitTime: Timestamp
-  exitedTime?: Timestamp
-  duration: number
-  paymentSlab: string
+  exitTime?: Timestamp
+  enteredExitTime: Timestamp
   fee: number
-  exitedByName?: string
-  feePaid?: number
-  paymentMethod?: string
+  image?: string
+  paymentSlab: string
+  plate?: string
   status: VehicleStatus
+  type?: string
 }
 
 
@@ -285,6 +288,7 @@ export async function setSlabByLotId(lotId: string, slabs: VehicleType[]) {
 
 export async function getVehicle(lotId: string, license: string): Promise<(EntryDetails&{id:string})[]> {
   const col = collection(db, "lots", lotId, "vehicles")
+  console.log("license", license, lotId)
   const q = query(col, where("enteredPlate", "==", license))
   const snapshot = await getDocs(q)
   return snapshot.docs.map((doc) => ({

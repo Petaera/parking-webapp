@@ -80,6 +80,9 @@ export default function ActiveVehicles() {
     const storedUser = localStorage.getItem("user")
     if (storedUser) {
       setUser(JSON.parse(storedUser))
+    } else {
+      // Mock user data for development
+      setUser({ role: "owner" }) // or "staff" based on your needs
     }
   }, [])
 

@@ -16,6 +16,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import Loading from "@/components/loading"
 import toast, { Toaster } from "react-hot-toast"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@radix-ui/react-tooltip"
+import { parseJWT } from "@/lib/utils"
 
 export default function ExitPayment() {
   const { loading, user, userData } = useFirebase()
@@ -66,16 +67,17 @@ export default function ExitPayment() {
     if (!lot) return
     setIsFetchingPlate(true);
     try{
-    const { plate, type, image, token } = await getVehicleFromCam(apiUrl.current, "exit");
+    const { token } = await getVehicleFromCam(apiUrl.current, "exit");
+    const {vehicle={}} = parseJWT(token); 
     setIsFetchingPlate(false);
     setToken(token);
-    if(plate){
-      setVehicleNumber(plate)
-      setFetchedPlate(plate)
-      handleSearch(plate)
+    if(vehicle.plate){
+      setVehicleNumber(vehicle.plate)
+      setFetchedPlate(vehicle.plate)
+      handleSearch(vehicle.plate)
     }
-    if(image){
-      setVehicleImage(image)
+    if(vehicle.image){
+      setVehicleImage(vehicle.image)
     }
     }catch(e){
       console.error("Error fetching vehicle details:", e)
@@ -89,11 +91,13 @@ export default function ExitPayment() {
     const vehicles = await getVehicle(lot, plateNumber)
     const vehicle = vehicles[0]
     if (vehicle) {
-      setSelectedVehicle(vehicle)
+      const enTime = (vehicle.entryTime ?? vehicle.enteredEntryTime)
+      vehicle.entryTime = vehicle.entryTime ?? vehicle.enteredEntryTime
+      setSelectedVehicle({ entryTime: enTime, ...vehicle})
       setVehicleFound(true)
-
+      console
       // Calculate fee based on entry time and current time
-      const entryTime = vehicle.entryTime.toDate()
+      const entryTime = vehicle.entryTime!.toDate()
       const currentTime = new Date()
       const durationMs = currentTime.getTime() - entryTime.getTime()
       const durationHours = durationMs / (1000 * 60 * 60)
@@ -351,11 +355,11 @@ export default function ExitPayment() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-slate-500">Entry Time:</span>
-                    <span>{selectedVehicle.entryTime.toDate().toLocaleTimeString()}</span>
+                    <span>{(selectedVehicle.entryTime??selectedVehicle.enteredEntryTime).toDate().toLocaleTimeString()}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-slate-500">Duration:</span>
-                    <span>{calculateDuration(selectedVehicle.entryTime.toDate())}</span>
+                    <span>{calculateDuration((selectedVehicle.entryTime??selectedVehicle.enteredEntryTime).toDate())}</span>
                   </div>
                 </div>
 
