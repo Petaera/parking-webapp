@@ -12,6 +12,7 @@ import {
   arrayUnion,
   arrayRemove,
   writeBatch,
+  orderBy,
 } from "firebase/firestore"
 import { db } from "./firebase"
 
@@ -289,7 +290,22 @@ export async function setSlabByLotId(lotId: string, slabs: VehicleType[]) {
 export async function getVehicle(lotId: string, license: string): Promise<(EntryDetails&{id:string})[]> {
   const col = collection(db, "lots", lotId, "vehicles")
   console.log("license", license, lotId)
-  const q = query(col, where("enteredPlate", "==", license))
+  const q = query(
+    col,
+    where("enteredPlate", "==", license),
+    where("status", "==", "active"),
+    orderBy("enteredEntryTime", "desc")
+  )
+  const snapshot = await getDocs(q)
+  return snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  })) as (EntryDetails&{id:string})[]
+}
+
+export async function getVehichles(lotId: string): Promise<(EntryDetails&{id:string})[]> {
+  const col = collection(db, "lots", lotId, "vehicles")
+  const q = query(col)
   const snapshot = await getDocs(q)
   return snapshot.docs.map((doc) => ({
     id: doc.id,

@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { DollarSign, Car, Clock, PercentIcon, AlertTriangle } from "lucide-react";
-import { EntryDetails, VehicleStatus } from "@/lib/firestore-service";
+import { EntryDetails, getVehichles, VehicleStatus } from "@/lib/firestore-service";
 import { useFirebase } from "@/contexts/firebase-context";
 import Loading from "@/components/loading";
 
@@ -23,7 +23,7 @@ import Loading from "@/components/loading";
 type Activity = EntryDetails & { id: string; lot: string };
 
 export default function Dashboard() {
-  const [activities, setActivities] = useState<Activity[]>([]);
+  const [activities, setActivities] = useState<(EntryDetails & { id: string; })[]>([]);
   const [totalRevenue, setTotalRevenue] = useState(0);
   const [activeCount, setActiveCount] = useState(0);
   const [overdueCount, setOverdueCount] = useState(0);
@@ -34,21 +34,17 @@ export default function Dashboard() {
 
     async function fetchData() {
       // fetch all active entries subcollections
-      const col = collection(db, "lots");
-      const entriesSnap = await getDocs(collectionGroup(db, "active"));
+      const entries = await getVehichles("vehicles");
+      console.log("entriesSnap", entries);
       const now = new Date();
       const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const entries: Activity[] = entriesSnap.docs.map((doc) => {
-        const data = doc.data() as EntryDetails;
-        const lotId = doc.ref.parent?.parent?.id || "";
-        return { id: doc.id, lot: lotId, ...data };
-      });
       setActivities(entries);
 
       // compute metrics
       const revenue = entries
-        .filter(e => e.exitedTime && e.exitedTime.toDate() >= startOfDay)
-        .reduce((sum, e) => sum + (e.feePaid ?? e.fee), 0);
+        .filter(e => e.exitTime && e.exitTime.toDate() >= startOfDay)
+        .filter(e => e.enteredExitTime && e.enteredExitTime.toDate() >= startOfDay)
+        .reduce((sum, e) => sum + e.fee, 0);
       setTotalRevenue(revenue);
 
       const active = entries.filter(e => e.status === "active").length;
@@ -57,7 +53,7 @@ export default function Dashboard() {
       const overdue = entries.filter(
         e =>
           e.status === "active" &&
-          now.getTime() > e.exitTime.toDate().getTime()
+          now.getTime() > (e.exitTime || e.enteredExitTime).toDate().getTime()
       ).length;
       setOverdueCount(overdue);
 
@@ -170,14 +166,14 @@ export default function Dashboard() {
                             <p className="text-xs text-muted-foreground">{act.enteredType}</p>
                           </div>
                         </TableCell>
-                        <TableCell>{formatTime(act.entryTime)}</TableCell>
+                        <TableCell>{formatTime(act.entryTime?? act.enteredEntryTime)}</TableCell>
                         <TableCell>
-                          {act.exitedTime
-                            ? formatTime(act.exitedTime)
-                            : formatTime(act.exitTime)}
+                          {(act.exitTime ?? act.enteredExitTime)
+                            ? formatTime(act.exitTime ?? act.enteredExitTime)
+                            : formatTime(act.exitTime ?? act.enteredExitTime)}
                         </TableCell>
                         {userData.role === "owner" && <TableCell>{act.lot}</TableCell>}
-                        <TableCell>₹{act.feePaid ?? act.fee}</TableCell>
+                        <TableCell>₹{act.fee}</TableCell>
                         <TableCell>
                           <Badge variant={badgeVariant(act.status)}>{act.status}</Badge>
                         </TableCell>

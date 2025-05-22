@@ -92,8 +92,7 @@ export default function ExitPayment() {
     const vehicle = vehicles[0]
     if (vehicle) {
       const enTime = (vehicle.entryTime ?? vehicle.enteredEntryTime)
-      vehicle.entryTime = vehicle.entryTime ?? vehicle.enteredEntryTime
-      setSelectedVehicle({ entryTime: enTime, ...vehicle})
+      setSelectedVehicle({ ...vehicle, entryTime: enTime})
       setVehicleFound(true)
       console
       // Calculate fee based on entry time and current time
@@ -290,7 +289,7 @@ export default function ExitPayment() {
       </div>
     )
 
-
+    console.log("selectedVehicle", selectedVehicle)
   return (
     <div className="flex min-h-screen flex-col">
       <Header title="Exit & Payment" />
@@ -355,11 +354,11 @@ export default function ExitPayment() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-slate-500">Entry Time:</span>
-                    <span>{(selectedVehicle.entryTime??selectedVehicle.enteredEntryTime).toDate().toLocaleTimeString()}</span>
+                    <span>{(selectedVehicle.entryTime!).toDate().toLocaleTimeString()}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-slate-500">Duration:</span>
-                    <span>{calculateDuration((selectedVehicle.entryTime??selectedVehicle.enteredEntryTime).toDate())}</span>
+                    <span>{calculateDuration((selectedVehicle.entryTime!).toDate())}</span>
                   </div>
                 </div>
 
