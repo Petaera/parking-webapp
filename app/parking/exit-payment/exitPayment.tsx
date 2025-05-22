@@ -400,7 +400,7 @@ export default function ExitPayment() {
                     <span className="font-bold">{calculateExtraTime()}</span>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="manual-amount">Final Amount (Overdue)</Label>
+                    <Label htmlFor="manual-amount">Balance Amount (Overdue)</Label>
                     <Input
                       id="manual-amount"
                       type="number"
