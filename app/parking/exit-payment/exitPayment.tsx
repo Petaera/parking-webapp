@@ -53,7 +53,6 @@ export default function ExitPayment() {
       setPricingSlabs(slabs)
     });
     getApiUrl(lot).then((url) => {
-      console.log(url);
       apiUrl.current = url;
     });
   }, [lot])
@@ -94,7 +93,6 @@ export default function ExitPayment() {
       const enTime = (vehicle.entryTime ?? vehicle.enteredEntryTime)
       setSelectedVehicle({ ...vehicle, entryTime: enTime})
       setVehicleFound(true)
-      console
       // Calculate fee based on entry time and current time
       const entryTime = vehicle.entryTime!.toDate()
       const currentTime = new Date()
@@ -105,7 +103,6 @@ export default function ExitPayment() {
         setTotalHours(durationHours);
       else
         setTotalHours(vehicle.duration);
-      console.log("Duration in hours:", durationHours)
     } else {
       toast.error("Vehicle not found. Please try again.")
       setSelectedVehicle(null)
@@ -116,7 +113,6 @@ export default function ExitPayment() {
   const calculateFee = () => {
     const vehicleSlabs = pricingSlabs.find((slab) => slab.id === selectedVehicle?.enteredType)?.slabs
     if (!vehicleSlabs) return 0
-    console.log("Vehicle Slabs:", vehicleSlabs)
     // For durations longer than 24 hours
     if (totalHours > 24) {
       const fullDays = Math.floor(totalHours / 24)
@@ -187,8 +183,9 @@ export default function ExitPayment() {
 
 
   useEffect(() => {
-    setManualAmount(fee.toString())
-  }, [fee])
+    if(!selectedVehicle?.fee) return
+    setManualAmount((selectedVehicle?.fee - calculateFee()).toString())
+  }, [selectedVehicle])
   useEffect(() => {
     if (!totalHours || !pricingSlabs) return
     setFee(calculateFee())
@@ -232,6 +229,7 @@ export default function ExitPayment() {
     setVehicleNumber("")
     setVehicleFound(false)
     setPaymentMethod("cash")
+    setVehicleImage(null)
     setSelectedVehicle(null)
   }
 
@@ -289,7 +287,6 @@ export default function ExitPayment() {
       </div>
     )
 
-    console.log("selectedVehicle", selectedVehicle)
   return (
     <div className="flex min-h-screen flex-col">
       <Header title="Exit & Payment" />
@@ -382,9 +379,14 @@ export default function ExitPayment() {
                     </div>
                     <span className="font-bold">₹{fee}</span>
                   </div>
-
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center">
+                      <span className="font-medium">Paid Fee:</span>
+                    </div>
+                    <span className="font-bold">₹{selectedVehicle?.fee}</span>
+                  </div>
                   <div className="space-y-2">
-                    <Label htmlFor="manual-amount">Final Amount (Override)</Label>
+                    <Label htmlFor="manual-amount">Final Amount (Overdue)</Label>
                     <Input
                       id="manual-amount"
                       type="number"
