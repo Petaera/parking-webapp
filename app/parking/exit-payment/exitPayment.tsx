@@ -110,6 +110,14 @@ export default function ExitPayment() {
     }
   }
 
+  const calculateExtraTime = () => {
+    const exitTime = selectedVehicle?.exitTime?.toDate()
+    if (!exitTime) return 0
+    const now = new Date()
+    if (now < exitTime) return 0
+    // calculate difference in hours (including decimals)
+    return (now.getTime() - exitTime.getTime()) / (1000 * 60 * 60)
+  }
   const calculateFee = () => {
     const vehicleSlabs = pricingSlabs.find((slab) => slab.id === selectedVehicle?.enteredType)?.slabs
     if (!vehicleSlabs) return 0
@@ -384,6 +392,12 @@ export default function ExitPayment() {
                       <span className="font-medium">Paid Fee:</span>
                     </div>
                     <span className="font-bold">₹{selectedVehicle?.fee}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center">
+                      <span className="font-medium">Extra Time:</span>
+                    </div>
+                    <span className="font-bold">{calculateExtraTime()}</span>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="manual-amount">Final Amount (Overdue)</Label>
