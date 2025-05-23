@@ -116,8 +116,12 @@ export default function ExitPayment() {
     const now = new Date()
     if (now < exitTime) return 0
     // calculate difference in hours (including decimals)
-    return (now.getTime() - exitTime.getTime()) / (1000 * 60 * 60)
+    const totalHours = (now.getTime() - exitTime.getTime()) / (1000 * 60 * 60)
+    const extraHours = Math.floor(totalHours);
+    const extraMinutes = Math.floor((totalHours % 1) * 60);
+    return `${extraHours}h ${extraMinutes}m`;
   }
+  
   const calculateFee = () => {
     const vehicleSlabs = pricingSlabs.find((slab) => slab.id === selectedVehicle?.enteredType)?.slabs
     if (!vehicleSlabs) return 0
@@ -192,7 +196,7 @@ export default function ExitPayment() {
 
   useEffect(() => {
     if(!selectedVehicle?.fee) return
-    setManualAmount((selectedVehicle?.fee - calculateFee()).toString())
+    setManualAmount((calculateFee() - selectedVehicle?.fee).toString())
   }, [selectedVehicle])
   useEffect(() => {
     if (!totalHours || !pricingSlabs) return
