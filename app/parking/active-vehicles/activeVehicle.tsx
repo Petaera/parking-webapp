@@ -1,11 +1,8 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { collection, query, where, Timestamp, DocumentSnapshot } from "firebase/firestore"
+import { Timestamp, DocumentSnapshot } from "firebase/firestore"
 import { getFilteredVehicles } from "@/lib/firestore-service"
-import { Combobox, ComboboxInput, ComboboxList, ComboboxItem } from "@/components/ui/combobox"
-import { useDebounce } from "../../../hooks/use-debounce"
-import { db } from "@/lib/firebase"
 import Header from "@/components/header"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"

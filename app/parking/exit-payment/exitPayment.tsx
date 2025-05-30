@@ -336,7 +336,7 @@ export default function ExitPayment() {
                 <div className="flex flex-1 gap-2">
                   <Input
                     value={vehicleNumber}
-                    onChange={(e) => setVehicleNumber(e.target.value)}
+                    onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())}
                     placeholder="Enter vehicle number"
                     className="flex-1"
                   />
@@ -415,7 +415,7 @@ export default function ExitPayment() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
+                {/* <div className="space-y-2">
                   <Label htmlFor="payment-method">Payment Method</Label>
                   <Select value={paymentMethod} onValueChange={setPaymentMethod}>
                     <SelectTrigger id="payment-method">
@@ -427,7 +427,7 @@ export default function ExitPayment() {
                       <SelectItem value="upi">UPI</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
+                </div> */}
               </CardContent>
               <CardFooter>
                 <Button className="w-full" onClick={handlePayment} disabled={isProcessing}>

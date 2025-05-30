@@ -62,15 +62,9 @@ export default function Sidebar() {
     },
     {
       title: "Settings",
-      href: "#",
+      href: "/settings",
       icon: <Settings className="h-5 w-5" />,
       roles: ["owner", "manager"],
-      submenu: [
-        { title: "Profile", href: "/settings/profile" },
-        { title: "Payment Settings", href: "/settings" },
-        { title: "User Management", href: "/settings/users", roles: ["owner"] },
-        { title: "System Settings", href: "/settings/system", roles: ["owner"] },
-      ],
     },
   ]
 
@@ -94,7 +88,7 @@ export default function Sidebar() {
   const SidebarContent = () => (
     <div className="flex h-full flex-col">
       <div className="flex h-16 items-center border-b px-6">
-        <h1 className="text-xl font-bold">Parking Manager</h1>
+        <h1 className="text-xl font-bold">Peta Parking</h1>
       </div>
 
       <div className="flex-1 overflow-auto py-4">

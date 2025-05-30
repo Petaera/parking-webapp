@@ -38,7 +38,7 @@ export default function Header({ title, children }: HeaderProps) {
             <span className="pb-1 font-black text-lg">←</span>
           </button>
         )}
-        <h1 className="text-lg font-semibold md:text-xl">{getPageTitle()}</h1>
+        <h1 className="text-lg font-semibold md:text-xl ml-14 md:ml-0">{getPageTitle()}</h1>
         
       </div>
       <div className="flex items-center gap-2">{children}</div>
