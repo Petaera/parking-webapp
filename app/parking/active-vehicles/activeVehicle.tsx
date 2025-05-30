@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
-import { onSnapshot, collection, query, where, Timestamp } from "firebase/firestore"
+import { useState, useEffect, useCallback } from "react"
+import { collection, query, where, Timestamp, DocumentSnapshot } from "firebase/firestore"
+import { getFilteredVehicles } from "@/lib/firestore-service"
 import { Combobox, ComboboxInput, ComboboxList, ComboboxItem } from "@/components/ui/combobox"
 import { useDebounce } from "../../../hooks/use-debounce"
 import { db } from "@/lib/firebase"
@@ -40,6 +41,10 @@ export default function ActiveVehicles() {
   const [lots, setLots] = useState<Lot[]>([])
   const [lotPage, setLotPage] = useState(1)
   const [typeFilter, setTypeFilter] = useState("all")
+  const [lastVisible, setLastVisible] = useState<DocumentSnapshot | null>(null)
+  const [hasMore, setHasMore] = useState(true)
+  const [filtersChanged, setFiltersChanged] = useState(false)
+  const PAGE_SIZE = 10
   const { user, userData } = useFirebase()
 
   useEffect(() => {
@@ -62,9 +67,72 @@ export default function ActiveVehicles() {
       setLotFilter(lots[0].id);
   }, [lots])
 
+
+  // Reset pagination when filters change
   useEffect(() => {
-    // TODO: fetch vehicle based on the filter(also deal with pagination)
+    setVehicles([]);
+    setLastVisible(null);
+    setHasMore(true);
+    setFiltersChanged(true);
+    const timer = setTimeout(() => {
+      fetchVehicles();
+    }, 500);
+    return () => clearTimeout(timer);
   }, [lotFilter, typeFilter, searchTerm]);
+
+  const fetchVehicles = useCallback(async () => {
+    if (!lotFilter) return;
+
+    setLoading(true);
+    try {
+      const { vehicles: newVehicles, lastVisible: newLastVisible } =
+        await getFilteredVehicles(
+          lotFilter,
+          {
+            searchTerm: searchTerm || undefined,
+            typeFilter: typeFilter !== "all" ? typeFilter : undefined
+          },
+          {
+            limit: PAGE_SIZE,
+            startAfter: filtersChanged ? null : lastVisible
+          }
+        );
+
+      setVehicles(prev => filtersChanged ?
+        newVehicles.map(v => ({ ...v, lot: lotFilter })) :
+        [...prev, ...newVehicles.map(v => ({ ...v, lot: lotFilter }))]
+      );
+      setLastVisible(newLastVisible);
+      setHasMore(newVehicles.length === PAGE_SIZE);
+      setFiltersChanged(false);
+    } catch (error) {
+      console.error("Error fetching vehicles:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [lotFilter, searchTerm, typeFilter, lastVisible, filtersChanged]);
+
+  const calculateDuration = (entryTime: Timestamp) => {
+    const now = Timestamp.now();
+    const durationInSeconds = now.seconds - entryTime.seconds;
+    const hours = Math.floor(durationInSeconds / 3600);
+    const days = Math.floor(hours / 24);
+    const remainingHours = hours % 24;
+    return days > 0 ? `${days}d ${remainingHours}h` : `${hours}h`;
+  }
+
+  const isOverdue = (vehicle: Vehicle) => {
+    const now = Timestamp.now();
+    const entryTime = vehicle.entryTime ?? vehicle.enteredEntryTime;
+    if (!entryTime) return false; // No entry time available
+    if (!(entryTime instanceof Timestamp)) {
+      console.error("Invalid entry time format:", entryTime);
+      return false;
+    }
+    return now.seconds > (entryTime.seconds + (vehicle.duration * 3600));
+
+  }
+
 
   if (loading) return <Loading />
   if (!userData) return null
@@ -90,19 +158,18 @@ export default function ActiveVehicles() {
                 />
               </div>
 
-              <Combobox value={lotFilter} onValueChange={setLotFilter}>
-                <ComboboxList>
-                  {lots
-                    .map(lot => (
-                      <ComboboxItem
-                        key={lot.id}
-                        value={lot.id}
-                      >
-                        {lot.name}
-                      </ComboboxItem>
-                    ))}
-                </ComboboxList>
-              </Combobox>
+              <Select value={lotFilter} onValueChange={setLotFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a lot" />
+                </SelectTrigger>
+                <SelectContent>
+                  {lots.map(lot => (
+                    <SelectItem key={lot.id} value={lot.id}>
+                      {lot.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
 
               <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -111,13 +178,15 @@ export default function ActiveVehicles() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="2-wheeler">2-Wheeler</SelectItem>
-                  <SelectItem value="4-wheeler">4-Wheeler</SelectItem>
+                  <SelectItem value="2">2-Wheeler</SelectItem>
+                  <SelectItem value="4">4-Wheeler</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </CardContent>
         </Card>
+
+
 
         <Card>
           <CardContent className="p-0">
@@ -128,18 +197,21 @@ export default function ActiveVehicles() {
                     <TableHead>Vehicle Number</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Entry Time</TableHead>
+                    <TableHead>In parking</TableHead>
                     <TableHead>Duration</TableHead>
-                    {userData?.role === "owner" && <TableHead>Lot</TableHead>}
+                    <TableHead>Lot</TableHead>
                     <TableHead>Amount</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {vehicles.length === 0 ? (
+                  {vehicles.length === 0 && !loading ? (
                     <TableRow>
-                      <TableCell colSpan={userData?.role === "owner" ? 8 : 7} className="text-center">
-                        No active vehicles found
+                      <TableCell colSpan={8} className="text-center">
+                        {searchTerm || typeFilter !== "all"
+                          ? "No vehicles match your filters"
+                          : "No active vehicles found"}
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -153,7 +225,10 @@ export default function ActiveVehicles() {
                         </TableCell>
                         <TableCell>{vehicle.enteredType}</TableCell>
                         <TableCell>
-                          {vehicle.timestamp?.toDate().toLocaleTimeString()}
+                          {(vehicle.entryTime ?? vehicle.enteredEntryTime)?.toDate().toLocaleString()}
+                        </TableCell>
+                        <TableCell>
+                          {calculateDuration(vehicle.entryTime ?? vehicle.enteredEntryTime)}
                         </TableCell>
                         <TableCell>
                           {vehicle.duration > 0 ? `${vehicle.duration}h` : 'Calculating...'}
@@ -167,6 +242,9 @@ export default function ActiveVehicles() {
                           }>
                             {vehicle.status}
                           </Badge>
+                          {isOverdue(vehicle) &&<Badge variant={"destructive"}>
+                            overdue
+                          </Badge>}
                         </TableCell>
                         <TableCell className="text-right">
                           <Button
@@ -186,6 +264,17 @@ export default function ActiveVehicles() {
           </CardContent>
         </Card>
       </div>
+      {hasMore && (
+        <div className="flex justify-center mt-4">
+          <Button
+            onClick={() => fetchVehicles()}
+            disabled={loading}
+            variant="outline"
+          >
+            {loading ? "Loading..." : "Load More"}
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

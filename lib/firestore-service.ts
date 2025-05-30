@@ -13,6 +13,9 @@ import {
   arrayRemove,
   writeBatch,
   orderBy,
+  limit,
+  startAfter,
+  DocumentSnapshot,
 } from "firebase/firestore"
 import { db } from "./firebase"
 
@@ -129,6 +132,22 @@ export async function getLots(forceFetch: boolean = false):Promise<Lot[]> {
   return lots;
 }
 
+export async function getLotsByIds(lotIds: string[]): Promise<Lot[]> {
+  const lots = await Promise.all(
+    lotIds.map(async (id) => {
+      const docRef = doc(db, "lots", id);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        return {
+          id: docSnap.id,
+          ...docSnap.data(),
+        } as Lot;
+      }
+      return null;
+    })
+  );
+  return lots.filter((lot): lot is Lot => lot !== null);
+}
 
 export function getApiUrl(lotId: string) {
   const docRef = doc(db, "lots", lotId, "device", "access")
@@ -303,16 +322,64 @@ export async function getVehicle(lotId: string, license: string): Promise<(Entry
   })) as (EntryDetails&{id:string})[]
 }
 
-export async function getVehichles(lotId: string): Promise<(EntryDetails&{id:string})[]> {
-  const col = collection(db, "lots", lotId, "vehicles")
-  const q = query(col)
-  const snapshot = await getDocs(q)
-  return snapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  })) as (EntryDetails&{id:string})[]
+export async function getFilteredVehicles(
+  lotId: string,
+  filters: {
+    searchTerm?: string,
+    typeFilter?: string,
+    statusFilter?: VehicleStatus
+  },
+  pagination: {
+    limit: number,
+    startAfter?: DocumentSnapshot | null
+  }
+): Promise<{ 
+  vehicles: (EntryDetails & { id: string })[], 
+  lastVisible: DocumentSnapshot | null 
+}> {
+  let q = query(
+    collection(db, "lots", lotId, "vehicles"),
+    orderBy("enteredEntryTime", "desc")
+  );
+  
+  // License plate prefix search
+  if (filters.searchTerm) {
+    q = query(
+      q, 
+      where("enteredPlate", ">=", filters.searchTerm),
+      where("enteredPlate", "<=", filters.searchTerm + '\uf8ff')
+    );
+  }
+  
+  // Vehicle type filter
+  if (filters.typeFilter && filters.typeFilter !== "all") {
+    q = query(q, where("enteredType", "==", filters.typeFilter));
+  }
+  
+  // Status filter (default to active if not specified)
+  q = query(q, where("status", "==", filters.statusFilter || "active"));
+  
+  // Pagination
+  q = query(q, limit(pagination.limit));
+  if (pagination.startAfter) {
+    q = query(q, startAfter(pagination.startAfter));
+  }
+  
+  const snapshot = await getDocs(q);
+  const lastVisible = snapshot.docs[snapshot.docs.length - 1] || null;
+  
+  return {
+    vehicles: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as (EntryDetails & { id: string })[],
+    lastVisible
+  };
 }
 
-
-
-
+// Keep original getVehicles for backward compatibility
+export async function getVehicles(lotId: string): Promise<(EntryDetails&{id:string})[]> {
+  const { vehicles } = await getFilteredVehicles(
+    lotId,
+    {},
+    { limit: 1000 }
+  );
+  return vehicles;
+}
