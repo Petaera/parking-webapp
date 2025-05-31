@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { DollarSign, Car, Clock, PercentIcon, AlertTriangle } from "lucide-react";
-import { EntryDetails, getVehichles, VehicleStatus } from "@/lib/firestore-service";
+import { EntryDetails, getVehicles, VehicleStatus, getLots, Lot } from "@/lib/firestore-service";
 import { useFirebase } from "@/contexts/firebase-context";
 import Loading from "@/components/loading";
 
@@ -28,14 +28,26 @@ export default function Dashboard() {
   const [activeCount, setActiveCount] = useState(0);
   const [overdueCount, setOverdueCount] = useState(0);
   const [utilization, setUtilization] = useState(0);
-  const { loading, user, userData } = useFirebase()
+  const [lots, setLots] = useState<Lot[]>([]);
+  const [selectedLot, setSelectedLot] = useState<string>("");
+  const { loading, user, userData } = useFirebase();
 
   useEffect(() => {
+    async function fetchLotsAndSetDefault() {
+      const lotsData = await getLots();
+      setLots(lotsData);
+      if (lotsData.length > 0) {
+        setSelectedLot(lotsData[0].id);
+      }
+    }
+    fetchLotsAndSetDefault();
+  }, []);
 
+  useEffect(() => {
+    if (!selectedLot) return;
     async function fetchData() {
-      // fetch all active entries subcollections
-      const entries = await getVehichles("vehicles");
-      console.log("entriesSnap", entries);
+      // fetch all active entries for selected lot
+      const entries = await getVehicles(selectedLot);
       const now = new Date();
       const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       setActivities(entries);
@@ -57,18 +69,13 @@ export default function Dashboard() {
       ).length;
       setOverdueCount(overdue);
 
-      // fetch lots to compute utilization (assumes each lot doc has a `capacity` field)
-      const lotsSnap = await getDocs(collection(db, "lots"));
-      let totalCapacity = 0;
-      lotsSnap.docs.forEach(doc => {
-        const lotData = doc.data() as { capacity?: number };
-        totalCapacity += lotData.capacity ?? 0;
-      });
+      // fetch lot to compute utilization (assumes each lot doc has a `capacity` field)
+      const lot = lots.find(l => l.id === selectedLot);
+      const totalCapacity = lot?.capacity ?? 0;
       setUtilization(totalCapacity > 0 ? Math.round((active / totalCapacity) * 100) : 0);
     }
-
     fetchData();
-  }, []);
+  }, [selectedLot, lots]);
 
   if (loading || !userData) return <Loading/>;
 
@@ -83,6 +90,24 @@ export default function Dashboard() {
       <Header title="Dashboard" />
 
       <div className="flex-1 p-4 pt-6 md:p-6">
+        <div className="mb-6 flex items-center gap-4">
+          <label htmlFor="lot-select" className="font-medium">Select Lot:</label>
+          <select
+            id="lot-select"
+            className="border rounded px-2 py-1"
+            value={selectedLot}
+            onChange={e => setSelectedLot(e.target.value)}
+          >
+            {lots.map(lot => (
+              <option key={lot.id} value={lot.id}>{lot.name}</option>
+            ))}
+          </select>
+          {selectedLot && (
+            <span className="ml-4 text-muted-foreground text-sm">
+              {lots.find(l => l.id === selectedLot)?.address}
+            </span>
+          )}
+        </div>
         <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardContent className="flex items-center p-6">
@@ -152,7 +177,6 @@ export default function Dashboard() {
                       <TableHead>Vehicle</TableHead>
                       <TableHead>Entry Time</TableHead>
                       <TableHead>Exit Time</TableHead>
-                      {userData.role === "owner" && <TableHead>Lot</TableHead>}
                       <TableHead>Amount</TableHead>
                       <TableHead>Status</TableHead>
                     </TableRow>
@@ -172,7 +196,6 @@ export default function Dashboard() {
                             ? formatTime(act.exitTime ?? act.enteredExitTime)
                             : formatTime(act.exitTime ?? act.enteredExitTime)}
                         </TableCell>
-                        {userData.role === "owner" && <TableCell>{act.lot}</TableCell>}
                         <TableCell>₹{act.fee}</TableCell>
                         <TableCell>
                           <Badge variant={badgeVariant(act.status)}>{act.status}</Badge>
