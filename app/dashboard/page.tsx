@@ -185,7 +185,7 @@ export default function Dashboard() {
                     {activities.map((act) => (
                       <TableRow key={act.id}>
                         <TableCell>
-                          <div>
+                          <div className="flex items-center space-x-2">
                             <p className="font-medium">{act.enteredPlate}</p>
                             <p className="text-xs text-muted-foreground">{act.enteredType}</p>
                           </div>
