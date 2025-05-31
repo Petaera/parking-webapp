@@ -47,7 +47,7 @@ export default function Dashboard() {
     if (!selectedLot) return;
     async function fetchData() {
       // fetch all active entries for selected lot
-      const entries = await getVehicles(selectedLot);
+      const entries = await getVehicles(selectedLot,10);
       const now = new Date();
       const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       setActivities(entries);

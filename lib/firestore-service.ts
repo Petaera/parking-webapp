@@ -375,11 +375,11 @@ export async function getFilteredVehicles(
 }
 
 // Keep original getVehicles for backward compatibility
-export async function getVehicles(lotId: string): Promise<(EntryDetails&{id:string})[]> {
+export async function getVehicles(lotId: string, limit: number = 20): Promise<(EntryDetails&{id:string})[]> {
   const { vehicles } = await getFilteredVehicles(
     lotId,
     {},
-    { limit: 1000 }
+    { limit: limit }
   );
   return vehicles;
 }
