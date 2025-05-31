@@ -48,12 +48,12 @@ export default function Sidebar() {
         { title: "Active Vehicles", href: "/parking/active-vehicles" },
       ],
     },
-    {
-      title: "Reports & Analytics",
-      href: "/reports",
-      icon: <BarChart3 className="h-5 w-5" />,
-      roles: ["owner"],
-    },
+    // {
+    //   title: "Reports & Analytics",
+    //   href: "/reports",
+    //   icon: <BarChart3 className="h-5 w-5" />,
+    //   roles: ["owner"],
+    // },
     {
       title: "Lot Management",
       href: "/lots",
