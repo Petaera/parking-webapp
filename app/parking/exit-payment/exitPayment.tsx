@@ -93,8 +93,9 @@ export default function ExitPayment() {
       const enTime = (vehicle.entryTime ?? vehicle.enteredEntryTime)
       setSelectedVehicle({ ...vehicle, entryTime: enTime})
       setVehicleFound(true)
+      console.log(vehicle)
       // Calculate fee based on entry time and current time
-      const entryTime = vehicle.entryTime!.toDate()
+      const entryTime = enTime.toDate()
       const currentTime = new Date()
       const durationMs = currentTime.getTime() - entryTime.getTime()
       const durationHours = durationMs / (1000 * 60 * 60)
@@ -111,7 +112,7 @@ export default function ExitPayment() {
   }
 
   const calculateExtraTime = () => {
-    const exitTime = selectedVehicle?.exitTime?.toDate()
+    const exitTime = (selectedVehicle?.exitTime ?? selectedVehicle?.enteredExitTime)?.toDate()
     if (!exitTime) return 0
     const now = new Date()
     if (now < exitTime) return 0
@@ -363,11 +364,11 @@ export default function ExitPayment() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-slate-500">Entry Time:</span>
-                    <span>{(selectedVehicle.entryTime!).toDate().toLocaleTimeString()}</span>
+                    <span>{(selectedVehicle.entryTime ?? selectedVehicle.enteredEntryTime).toDate().toLocaleTimeString()}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-slate-500">Duration:</span>
-                    <span>{calculateDuration((selectedVehicle.entryTime!).toDate())}</span>
+                    <span>{calculateDuration((selectedVehicle.entryTime ?? selectedVehicle.enteredEntryTime).toDate())}</span>
                   </div>
                 </div>
 
