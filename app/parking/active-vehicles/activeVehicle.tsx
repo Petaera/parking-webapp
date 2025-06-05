@@ -192,14 +192,13 @@ export default function ActiveVehicles() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Vehicle Number</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Entry Time</TableHead>
                     <TableHead>In parking</TableHead>
                     <TableHead>Duration</TableHead>
-                    <TableHead>Lot</TableHead>
                     <TableHead>Amount</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    {/* <TableHead className="text-right">Actions</TableHead> */}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -220,6 +219,17 @@ export default function ActiveVehicles() {
                             {vehicle.enteredPlate}
                           </div>
                         </TableCell>
+                         <TableCell>
+                          <Badge variant={
+                            vehicle.status === "fraud" ? "destructive" :
+                              vehicle.status === "active" ? "outline" : "default"
+                          }>
+                            {vehicle.status}
+                          </Badge>
+                          {isOverdue(vehicle) && <Badge variant={"destructive"}>
+                            overdue
+                          </Badge>}
+                        </TableCell>
                         <TableCell>{vehicle.enteredType}</TableCell>
                         <TableCell>
                           {(vehicle.entryTime ?? vehicle.enteredEntryTime)?.toDate().toLocaleString()}
@@ -230,20 +240,9 @@ export default function ActiveVehicles() {
                         <TableCell>
                           {vehicle.duration > 0 ? `${vehicle.duration}h` : 'Calculating...'}
                         </TableCell>
-                        {userData?.role === "owner" && <TableCell>{vehicle.lot}</TableCell>}
                         <TableCell>₹{vehicle.fee}</TableCell>
-                        <TableCell>
-                          <Badge variant={
-                            vehicle.status === "fraud" ? "destructive" :
-                              vehicle.status === "active" ? "outline" : "default"
-                          }>
-                            {vehicle.status}
-                          </Badge>
-                          {isOverdue(vehicle) &&<Badge variant={"destructive"}>
-                            overdue
-                          </Badge>}
-                        </TableCell>
-                        <TableCell className="text-right">
+                       
+                        {/* <TableCell className="text-right">
                           <Button
                             variant="outline"
                             size="sm"
@@ -251,7 +250,7 @@ export default function ActiveVehicles() {
                           >
                             Checkout
                           </Button>
-                        </TableCell>
+                        </TableCell> */}
                       </TableRow>
                     ))
                   )}
