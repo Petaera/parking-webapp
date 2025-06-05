@@ -197,7 +197,9 @@ export default function ExitPayment() {
 
   useEffect(() => {
     if(!selectedVehicle?.fee) return
-    setManualAmount((calculateFee() - selectedVehicle?.fee).toString())
+    const calculated = calculateFee();
+    if(calculated > selectedVehicle.fee)
+      setManualAmount((calculated - selectedVehicle?.fee).toString())
   }, [selectedVehicle])
   useEffect(() => {
     if (!totalHours || !pricingSlabs) return
