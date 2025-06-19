@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Slider } from "@/components/ui/slider"
+import Slider from '@mui/material/Slider';
 import { Camera, RefreshCw, Info } from "lucide-react"
 import Header from "@/components/header"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -20,8 +20,6 @@ import { useSearchParams } from 'next/navigation'
 import { Toaster, toast } from 'react-hot-toast';
 import Loading from "@/components/loading"
 import { getVehicle, saveEntry } from "@/lib/api-service"
-import { set } from "react-hook-form"
-import { getDownloadUrl } from "@/lib/storage-service"
 import { parseJWT } from "@/lib/utils"
 
 
@@ -150,12 +148,46 @@ export default function GenerateSlip() {
     return ""
   }
 
+  // Get slab hours for current vehicle type
+  const getSlabSteps = () => {
+    const vehicleSlabs = pricingSlabs.find(slab => slab.id === vehicleType)?.slabs || [];
+    console.log(vehicleSlabs)
+    return vehicleSlabs
+      .filter(slab => slab.rangeType === "upTo")
+      .map(slab => slab.hours)
+      .sort((a, b) => a - b);
+  };
+
   const fee = calculateFee()
+
+  // Reset hours when vehicle type or pricing slabs change
+  React.useEffect(() => {
+    const vehicleSlabs = pricingSlabs.find(slab => slab.id === vehicleType)?.slabs || [];
+    const steps = vehicleSlabs
+      .filter(slab => slab.rangeType === "upTo")
+      .map(slab => slab.hours)
+      .sort((a, b) => a - b);
+    
+    if (steps.length > 0 && !steps.includes(hours)) {
+      setHours(steps[0]); // Reset to first valid step
+    }
+  }, [vehicleType, pricingSlabs]);
+
+  // Generate marks for the slider
+  const marks = React.useMemo(() => {
+    const vehicleSlabs = pricingSlabs.find(slab => slab.id === vehicleType)?.slabs || [];
+    return vehicleSlabs
+      .filter(slab => slab.rangeType === "upTo")
+      .map(slab => ({
+        value: slab.hours,
+        label: `${slab.hours}hr`,
+      }))
+      .sort((a, b) => a.value - b.value);
+  }, [vehicleType, pricingSlabs]);
 
   // Update manual amount when fee changes
   // React.useEffect(() => {
   //   setManualAmount(fee.toString())
-
   // }, [fee])
 
 
@@ -363,7 +395,42 @@ export default function GenerateSlip() {
                       {hours} {hours === 1 ? "hour" : "hours"}
                     </span>
                   </div>
-                  <Slider value={[hours]} min={0} max={24} step={1} onValueChange={(value) => setHours(value[0])} />
+                  <Slider 
+                    value={hours} 
+                    min={0} 
+                    max={24} 
+                    step={null}
+                    marks={marks}
+                    onChange={(_, value) => {
+                      setDays(0); // Reset days when hours change
+                      const steps = getSlabSteps();
+                      const nearest = steps.reduce((prev, curr) => 
+                        Math.abs(curr - value) < Math.abs(prev - value) ? curr : prev
+                      );
+                      setHours(nearest);
+                    }}
+                    sx={{
+                      color: '#333',
+                      height: 8,
+                      '& .MuiSlider-thumb': {
+                        height: 24,
+                        width: 24,
+                        backgroundColor: '#fff',
+                        border: '2px solid #000',
+                      },
+                      '& .MuiSlider-track': {
+                        height: 8,
+                        backgroundColor: '#333',
+                      },
+                      '& .MuiSlider-rail': {
+                        height: 8,
+                        backgroundColor: '#ccc',
+                      },
+                      '& .MuiSlider-markLabel': {
+                        fontSize: '0.75rem',
+                      }
+                    }}
+                  />
                 </div>
 
                 <div className="space-y-2">
@@ -373,7 +440,37 @@ export default function GenerateSlip() {
                       {days} {days === 1 ? "day" : "days"}
                     </span>
                   </div>
-                  <Slider value={[days]} min={0} max={30} step={1} onValueChange={(value) => setDays(value[0])} />
+                  <Slider 
+                    value={days} 
+                    min={0} 
+                    max={30} 
+                    step={1} 
+                    onChange={(_, value) => {
+                      if(value > 0) setHours(0); // Reset hours when days change
+                      setDays(value)}
+                    }
+                    sx={{
+                      color: '#333',
+                      height: 8,
+                      '& .MuiSlider-thumb': {
+                        height: 24,
+                        width: 24,
+                        backgroundColor: '#fff',
+                        border: '2px solid #000',
+                      },
+                      '& .MuiSlider-track': {
+                        height: 8,
+                        backgroundColor: '#333',
+                      },
+                      '& .MuiSlider-rail': {
+                        height: 8,
+                        backgroundColor: '#ccc',
+                      },
+                      '& .MuiSlider-markLabel': {
+                        fontSize: '0.75rem',
+                      }
+                    }}
+                  />
                 </div>
               </div>
 
@@ -425,4 +522,3 @@ export default function GenerateSlip() {
     </div>
   )
 }
-
