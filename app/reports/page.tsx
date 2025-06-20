@@ -236,10 +236,10 @@ export default function Reports() {
               </SelectContent>
             </Select>
           </div>
-          <Button variant="outline" size="sm">
+          {/* <Button variant="outline" size="sm">
             <Download className="mr-2 h-4 w-4" />
             <span className="hidden sm:inline">Export</span>
-          </Button>
+          </Button> */}
         </div>
       </Header>
       

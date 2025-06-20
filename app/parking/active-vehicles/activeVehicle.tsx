@@ -40,7 +40,6 @@ export default function ActiveVehicles() {
   const [typeFilter, setTypeFilter] = useState("all")
   const [lastVisible, setLastVisible] = useState<DocumentSnapshot | null>(null)
   const [hasMore, setHasMore] = useState(true)
-  const [filtersChanged, setFiltersChanged] = useState(false)
   const PAGE_SIZE = 10
   const { user, userData } = useFirebase()
 
@@ -70,44 +69,42 @@ export default function ActiveVehicles() {
     setVehicles([]);
     setLastVisible(null);
     setHasMore(true);
-    setFiltersChanged(true);
     const timer = setTimeout(() => {
-      fetchVehicles();
+      fetchVehicles(null);
     }, 500);
     return () => clearTimeout(timer);
   }, [lotFilter, typeFilter, searchTerm]);
 
-  const fetchVehicles = useCallback(async () => {
-    if (!lotFilter) return;
-
-    setLoading(true);
-    try {
-      const { vehicles: newVehicles, lastVisible: newLastVisible } =
-        await getFilteredVehicles(
-          lotFilter,
-          {
-            searchTerm: searchTerm || undefined,
-            typeFilter: typeFilter !== "all" ? typeFilter : undefined
-          },
-          {
-            limit: PAGE_SIZE,
-            startAfter: filtersChanged ? null : lastVisible
-          }
-        );
-
-      setVehicles(prev => filtersChanged ?
-        newVehicles.map(v => ({ ...v, lot: lotFilter })) :
-        [...prev, ...newVehicles.map(v => ({ ...v, lot: lotFilter }))]
+const fetchVehicles = useCallback(async (startAfter: DocumentSnapshot | null = lastVisible) => {
+  if (!lotFilter) return;
+  console.log("Fetching vehicles for lot:", startAfter);
+  setLoading(true);
+  try {
+    const { vehicles: newVehicles, lastVisible: newLastVisible } =
+      await getFilteredVehicles(
+        lotFilter,
+        {
+          searchTerm: searchTerm || undefined,
+          typeFilter: typeFilter !== "all" ? typeFilter : undefined
+        },
+        {
+          limit: PAGE_SIZE,
+          startAfter: startAfter
+        }
       );
-      setLastVisible(newLastVisible);
-      setHasMore(newVehicles.length === PAGE_SIZE);
-      setFiltersChanged(false);
-    } catch (error) {
-      console.error("Error fetching vehicles:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [lotFilter, searchTerm, typeFilter, lastVisible, filtersChanged]);
+    console.log("Fetched vehicles:", newVehicles);
+    setVehicles(prev => [
+      ...prev, 
+      ...newVehicles.map(v => ({ ...v, lot: lotFilter }))
+    ]);
+    setLastVisible(newLastVisible);
+    setHasMore(newVehicles.length === PAGE_SIZE);
+  } catch (error) {
+    console.error("Error fetching vehicles:", error);
+  } finally {
+    setLoading(false);
+  }
+}, [lotFilter, searchTerm, typeFilter, lastVisible]);
 
   const calculateDuration = (entryTime: Timestamp) => {
     const now = Timestamp.now();

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { getDocs, collectionGroup, collection } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,6 +32,7 @@ export default function Dashboard() {
   const [lots, setLots] = useState<Lot[]>([]);
   const [selectedLot, setSelectedLot] = useState<string>("");
   const { loading, user, userData } = useFirebase();
+  const router = useRouter();
 
   useEffect(() => {
     async function fetchLotsAndSetDefault() {
@@ -109,7 +111,7 @@ export default function Dashboard() {
           )}
         </div>
         <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-          <Card>
+          <Card onClick={() => router.push('/reports')} className="cursor-pointer">
             <CardContent className="flex items-center p-6">
               <div className="mr-4 rounded-full bg-primary/10 p-2">
                 <DollarSign className="h-6 w-6 text-primary" />
@@ -123,7 +125,7 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card onClick={() => router.push('/reports')} className="cursor-pointer">
             <CardContent className="flex items-center p-6">
               <div className="mr-4 rounded-full bg-primary/10 p-2">
                 <Car className="h-6 w-6 text-primary" />
@@ -136,7 +138,7 @@ export default function Dashboard() {
           </Card>
 
           {userData.role === "owner" && (
-            <Card>
+            <Card onClick={() => router.push('/reports')} className="cursor-pointer">
               <CardContent className="flex items-center p-6">
                 <div className="mr-4 rounded-full bg-primary/10 p-2">
                   <Clock className="h-6 w-6 text-primary" />
@@ -150,7 +152,7 @@ export default function Dashboard() {
           )}
 
           {userData.role === "owner" && (
-            <Card>
+            <Card onClick={() => router.push('/reports')} className="cursor-pointer">
               <CardContent className="flex items-center p-6">
                 <div className="mr-4 rounded-full bg-primary/10 p-2">
                   <PercentIcon className="h-6 w-6 text-primary" />
