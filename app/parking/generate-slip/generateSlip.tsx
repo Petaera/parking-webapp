@@ -77,6 +77,8 @@ export default function GenerateSlip() {
     const vehicleSlabs = pricingSlabs.find((slab) => slab.id === vehicleType)?.slabs
     if (!vehicleSlabs) return 0
     const totalHours = hours + days * 24
+    //sort slabs based on hours
+    vehicleSlabs.sort((a,b)=> a.hours - b.hours)
 
     // For durations longer than 24 hours
     if (totalHours > 24) {
@@ -388,50 +390,24 @@ export default function GenerateSlip() {
               </div>
 
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <Label>Hours</Label>
-                    <span className="text-sm font-medium">
-                      {hours} {hours === 1 ? "hour" : "hours"}
-                    </span>
-                  </div>
-                  <Slider 
-                    value={hours} 
-                    min={0} 
-                    max={24} 
-                    step={null}
-                    marks={marks}
-                    onChange={(_, value) => {
-                      setDays(0); // Reset days when hours change
-                      const steps = getSlabSteps();
-                      const nearest = steps.reduce((prev, curr) => 
-                        Math.abs(curr - value) < Math.abs(prev - value) ? curr : prev
-                      );
-                      setHours(nearest);
-                    }}
-                    sx={{
-                      color: '#333',
-                      height: 8,
-                      '& .MuiSlider-thumb': {
-                        height: 24,
-                        width: 24,
-                        backgroundColor: '#fff',
-                        border: '2px solid #000',
-                      },
-                      '& .MuiSlider-track': {
-                        height: 8,
-                        backgroundColor: '#333',
-                      },
-                      '& .MuiSlider-rail': {
-                        height: 8,
-                        backgroundColor: '#ccc',
-                      },
-                      '& .MuiSlider-markLabel': {
-                        fontSize: '0.75rem',
-                      }
-                    }}
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label>Hours</Label>
+                <select
+                  value={hours}
+                  onChange={(e) => {
+                    setDays(0);
+                    console.log("Selected hours:", e.target.value);
+                    setHours(Number(e.target.value));
+                  }}
+                  className="w-full p-2 border border-gray-300 rounded bg-white text-black"
+                >
+                  {getSlabSteps().map((step) => (
+                    <option key={step} value={step}>
+                      {step} {step === 1 ? "hour" : "hours"}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
                 <div className="space-y-2">
                   <div className="flex justify-between">
